@@ -26,6 +26,78 @@ letter_to_num = {
     '-': 20  # Gap symbol
 }
 
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from PLM.seq_utils import one_hot_seq_batch
+
+def get_sequences_pca_coords(sequences_train, max_pot=21):
+    """
+    Compute 2D PCA coordinates from training sequences using one-hot + scaling.
+    """
+    one_hot_train = one_hot_seq_batch(sequences_train, max_pot=max_pot)  # shape (num_seq, seq_len, max_pot)
+    train_flat = one_hot_train.reshape(one_hot_train.shape[0], -1)
+    scaler = StandardScaler()
+    train_scaled = scaler.fit_transform(train_flat)
+    pca = PCA(n_components=2)
+    train_pca = pca.fit_transform(train_scaled)
+    return train_pca
+
+def get_PCA_grid_coords(coords_2d, N, plot=False, highlight_index=None):
+    """
+    Normalize and discretize 2D PCA coordinates into an NxN integer grid.
+    """
+    coords_min = coords_2d.min(axis=0)
+    coords_max = coords_2d.max(axis=0)
+    norm_coords = (coords_2d - coords_min) / (coords_max - coords_min + 1e-8)
+    grid_coords = (norm_coords * (N - 1)).astype(int)
+    
+    if plot:
+        plt.figure(figsize=(8, 8))
+        plt.scatter(norm_coords[:, 0], norm_coords[:, 1], c='gray', s=40, label="All sequences")
+        for i in range(N + 1):
+            plt.axhline(i / (N - 1), color='lightgray', linewidth=0.5)
+            plt.axvline(i / (N - 1), color='lightgray', linewidth=0.5)
+        if highlight_index is not None:
+            x, y = norm_coords[highlight_index]
+            gx, gy = grid_coords[highlight_index]
+            plt.scatter(x, y, color='red', s=100, label=f"Sequence {highlight_index}")
+            plt.text(x + 0.01, y + 0.01, f"Grid: ({gx},{gy})", color='red', fontsize=10)
+        plt.title(f"PCA Projection with {N}x{N} Grid")
+        plt.xlabel("PCA 1 (normalized)")
+        plt.ylabel("PCA 2 (normalized)")
+        plt.legend()
+        plt.grid(False)
+        plt.show()
+    return grid_coords
+
+def add_PCA_coords(seqs, N, max_pot=21,  plot= False, highlight_index=None):
+    """ Parameters: 
+        - seqs: numpy array of training sequences (length L)
+        - N: int, discretization of PCA into 2D grid NxN
+        Returns: 
+        - seqs_PCA: numpay array of sequences with PCA coordinates added (Length: L+2)"""
+    # 1) Compute 2D PCA coordinates from sequences (using your PCA function)
+    pca_coords = get_sequences_pca_coords(seqs, max_pot=max_pot)  # shape (num_seq, 2)
+
+    # 2) Discretize PCA coords into NxN grid
+    grid_coords = get_PCA_grid_coords(pca_coords, N, plot= plot, highlight_index=highlight_index)  # shape (num_seq, 2)
+
+    # 3) Convert seqs to array if needed and ensure proper shape for hstack
+    seqs_array = np.array(seqs)
+    if seqs_array.ndim == 1:  # 1D list of sequences (e.g., strings)
+        raise ValueError("seqs should be converted to numeric array before adding PCA coords.")
+
+    # 4) Stack original features + grid coordinates
+    seqs_pca = np.hstack((seqs_array, grid_coords))
+
+    # 5) Check shapes
+    expected_cols = seqs_array.shape[1] + 2
+    if seqs_pca.shape[1] != expected_cols:
+        raise ValueError(f"Expected shape ({seqs_array.shape[0]}, {expected_cols}), got {seqs_pca.shape}")
+
+    return seqs_pca
+
 def open_fasta(filename):
     if filename.endswith('.gz'):
         return gzip.open(filename, 'rt')
@@ -159,6 +231,7 @@ def remove_duplicate_sequences(Z, verbose=True):
     if verbose:
         print(f"Done: {M} -> {len(unique_indices)} sequences after removing duplicates.")
     return newZ, unique_indices
+    
 
 
 
