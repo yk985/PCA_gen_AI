@@ -2,13 +2,15 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-class AttentionModel(nn.Module):
+class AttentionModel_PCA(nn.Module):
     def __init__(
         self, 
         H, 
         d, 
-        N, 
-        q, 
+        N1,#length of protein sequence
+        N2, #number of PCA components
+        q1, #number of aa
+        q2, #number of PCA discretization 
         Q=None,
         V=None,
         K=None,
@@ -20,7 +22,7 @@ class AttentionModel(nn.Module):
         device = 'cpu'
         
     ):
-        super(AttentionModel, self).__init__()
+        super(AttentionModel_PCA, self).__init__()
 
         # Device & dtype
         # You could choose your own logic for picking device, or force CPU/GPU.
@@ -32,8 +34,10 @@ class AttentionModel(nn.Module):
         # Store hyperparameters
         self.H = H
         self.d = d
-        self.N = N
-        self.q = q
+        self.N1 = N1
+        self.q1 = q1
+        self.N2 = N2
+        self.q2 = q2
         self.lambd = lambd
         self.index_last_domain1 = index_last_domain1
         self.H1 = H1
@@ -50,16 +54,17 @@ class AttentionModel(nn.Module):
         random.seed(seed)
         # Define parameters
         if Q==None:
+            print("not working")
             self.Q = nn.Parameter(
-                torch.tensor(np.random.randn(H, d, N), dtype=self.dtype, device=self.device)
+                torch.tensor(np.random.randn(H, d, N1), dtype=self.dtype, device=self.device)
             )
         if K==None:
             self.K = nn.Parameter(
-                torch.tensor(np.random.randn(H, d, N), dtype=self.dtype, device=self.device)
+                torch.tensor(np.random.randn(H, d, N2), dtype=self.dtype, device=self.device)
             )
         if V==None:
             self.V = nn.Parameter(
-                torch.tensor(np.random.randn(H, q, q), dtype=self.dtype, device=self.device)
+                torch.tensor(np.random.randn(H, q1, q2), dtype=self.dtype, device=self.device)
             )
         import os
         cwd = os.getcwd()
@@ -172,34 +177,35 @@ class AttentionModel(nn.Module):
 
         H, _, N = Q.shape
         # Step 1: Compute the raw attention scores using einsum
-        e = torch.einsum('hdi,hdj->ijh', Q, K)  # Shape: (N, N, H)
+        e = torch.einsum('hdi,hdj->ijh', Q, K)  # Shape: (N1, N2, H)
 
-        # Exclude self-interactions by setting scores to -inf on the diagonal
-        i_indices = torch.arange(N, device=device).unsqueeze(1)
-        j_indices = torch.arange(N, device=device).unsqueeze(0)
-        self_mask = (i_indices != j_indices).float()
-        mask_value = -1e9  # A large negative value to zero out after softmax
-        e = e * self_mask.unsqueeze(-1) + (1 - self_mask.unsqueeze(-1)) * mask_value
+        # Commented because we don't use masks for now 
+        # # Exclude self-interactions by setting scores to -inf on the diagonal
+        # i_indices = torch.arange(N, device=device).unsqueeze(1)
+        # j_indices = torch.arange(N, device=device).unsqueeze(0)
+        # self_mask = (i_indices != j_indices).float()
+        # mask_value = -1e9  # A large negative value to zero out after softmax
+        # e = e * self_mask.unsqueeze(-1) + (1 - self_mask.unsqueeze(-1)) * mask_value
 
-        # If there's a domain split:
-        if self.index_last_domain1 > 0 and self.index_last_domain1 < N:
-            domain_masks = self.create_attention_masks(
-                H=H, 
-                L=N, 
-                index_last_domain1=self.index_last_domain1,
-                H1=self.H1,  # per your original usage
-                H2=self.H2
-            )
-            # Invert the domain masks to identify positions to mask
-            inverted_domain_masks = (1 - domain_masks).bool()  # Positions to mask are True
-            # Permute e to match the shape of domain_masks
-            e = e.permute(2, 0, 1)  # Shape: (H, N, N)
-            # Apply the masks
-            e = e.masked_fill(inverted_domain_masks, mask_value)
-            # Permute e back to original shape
-            e = e.permute(1, 2, 0)  # Shape: (N, N, H)
-        else:
-            domain_masks = 0
+        # # If there's a domain split:
+        # if self.index_last_domain1 > 0 and self.index_last_domain1 < N:
+        #     domain_masks = self.create_attention_masks(
+        #         H=H, 
+        #         L=N, 
+        #         index_last_domain1=self.index_last_domain1,
+        #         H1=self.H1,  # per your original usage
+        #         H2=self.H2
+        #     )
+        #     # Invert the domain masks to identify positions to mask
+        #     inverted_domain_masks = (1 - domain_masks).bool()  # Positions to mask are True
+        #     # Permute e to match the shape of domain_masks
+        #     e = e.permute(2, 0, 1)  # Shape: (H, N, N)
+        #     # Apply the masks
+        #     e = e.masked_fill(inverted_domain_masks, mask_value)
+        #     # Permute e back to original shape
+        #     e = e.permute(1, 2, 0)  # Shape: (N, N, H)
+        # else:
+        #     domain_masks = 0
 
         return e
 
@@ -207,74 +213,76 @@ class AttentionModel(nn.Module):
         
         device = self.device
         dtype = self.dtype
-
-        H, _, N = Q.shape
-        # N, _, _ = V.shape  # Actually your code re-assigns same N but let's keep it as is
-        _N, _, _ = V.shape
+        #Not necessary
+        # H, _, N = Q.shape
+        # # N, _, _ = V.shape  # Actually your code re-assigns same N but let's keep it as is
+        # _N, _, _ = V.shape
         index_first_domain2 = index_last_domain1 + 1
 
         # Get e from compute_product_Q_K
         e = self.compute_product_Q_K(Q, K)
+        N1,N2,H=e.shape
 
-        sf = torch.zeros(N, N, H, device=device, dtype=dtype)
+        sf = torch.zeros(N1, N2, H, device=device, dtype=dtype)
         for h in range(H):
             if index_last_domain1 != 0:
-                if h < H1:
-                    # Heads for Domain 1
-                    softmax_vals = torch.softmax(
-                        e[0:index_last_domain1+1, 0:index_last_domain1+1, h], 
-                        dim=1
-                    )
-                    top = torch.cat([
-                        softmax_vals,
-                        torch.zeros(
-                            index_last_domain1+1, 
-                            N - index_last_domain1 - 1, 
-                            device=device
-                        )
-                    ], dim=1)
-                    sf_domain = torch.cat([
-                        top,
-                        torch.zeros(
-                            N - index_last_domain1 - 1, 
-                            N, 
-                            device=device
-                        )
-                    ], dim=0)
-                    sf = sf.clone()
-                    sf[:, :, h] = sf_domain
-                elif h < H2:
-                    # Heads for Domain 2
-                    softmax_vals = torch.softmax(
-                        e[index_first_domain2:, index_first_domain2:, h], 
-                        dim=1
-                    )
-                    # Create the top-left zero block
-                    bottom_left = torch.zeros(
-                        N - index_first_domain2, 
-                        index_first_domain2, 
-                        device=device
-                    )
-                    # top and bottom
-                    top = torch.zeros(index_first_domain2, N, device=device)
-                    bottom = torch.cat([bottom_left, softmax_vals], dim=1)
-                    sf_domain = torch.cat([top, bottom], dim=0)
-                    sf = sf.clone()
-                    sf[:, :, h] = sf_domain
-                else:
-                    # Heads for inter-domain interactions
-                    sf_domain = torch.softmax(e[:, :, h], dim=1)
-                    sf = sf.clone()
-                    sf[:, :, h] = sf_domain
+                pass #Again no masks 
+                # if h < H1:
+                #     # Heads for Domain 1
+                #     softmax_vals = torch.softmax(
+                #         e[0:index_last_domain1+1, 0:index_last_domain1+1, h], 
+                #         dim=1
+                #     )
+                #     top = torch.cat([
+                #         softmax_vals,
+                #         torch.zeros(
+                #             index_last_domain1+1, 
+                #             N - index_last_domain1 - 1, 
+                #             device=device
+                #         )
+                #     ], dim=1)
+                #     sf_domain = torch.cat([
+                #         top,
+                #         torch.zeros(
+                #             N - index_last_domain1 - 1, 
+                #             N, 
+                #             device=device
+                #         )
+                #     ], dim=0)
+                #     sf = sf.clone()
+                #     sf[:, :, h] = sf_domain
+                # elif h < H2:
+                #     # Heads for Domain 2
+                #     softmax_vals = torch.softmax(
+                #         e[index_first_domain2:, index_first_domain2:, h], 
+                #         dim=1
+                #     )
+                #     # Create the top-left zero block
+                #     bottom_left = torch.zeros(
+                #         N - index_first_domain2, 
+                #         index_first_domain2, 
+                #         device=device
+                #     )
+                #     # top and bottom
+                #     top = torch.zeros(index_first_domain2, N, device=device)
+                #     bottom = torch.cat([bottom_left, softmax_vals], dim=1)
+                #     sf_domain = torch.cat([top, bottom], dim=0)
+                #     sf = sf.clone()
+                #     sf[:, :, h] = sf_domain
+                # else:
+                #     # Heads for inter-domain interactions
+                #     sf_domain = torch.softmax(e[:, :, h], dim=1)
+                #     sf = sf.clone()
+                #     sf[:, :, h] = sf_domain
             else:
                 # No domain masks applied
                 sf_domain = torch.softmax(e[:, :, h], dim=1)
                 sf = sf.clone()
                 sf[:, :, h] = sf_domain
 
-        return sf
+        return sf #shape (N1,N2,H)
 
-    def compute_mat_ene(self, Q, K, V, Z, H1=0, H2=0, index_last_domain1=0):
+    def compute_mat_ene(self, Q, K, V, Z, H1=0, H2=0, index_last_domain1=0):#A revoiiir: ajouter un autre Z ou juste separer dans la fonction pour protein sequence and PCA components
         
         # We'll assume you intended to call self.compute_attention_heads here.
         # The old snippet references 'e' out of nowhere, so presumably that was from compute_product_Q_K.
@@ -285,7 +293,7 @@ class AttentionModel(nn.Module):
         device = self.device
         dtype = self.dtype
 
-        H, q, _ = V.shape
+        H, q1, q2 = V.shape
         # For clarity in your snippet, 'e' was from compute_product_Q_K,
         # and 'sf' is from compute_attention_heads.
         # We'll compute them inside to match your logic:
@@ -303,11 +311,11 @@ class AttentionModel(nn.Module):
         # but actually let's just read from sf itself.
         N_e1, N_e2, H_e = sf.shape
         N_Z, M = Z.shape
+        q1,q2=V.shape
+        # assert N_e1 == N_e2 == N_Z, "Mismatch in N between sf and Z"
+        # N = N_e1
 
-        assert N_e1 == N_e2 == N_Z, "Mismatch in N between sf and Z"
-        N = N_e1
-
-        mat_ene = torch.zeros(N, q, M, device=device, dtype=dtype)
+        mat_ene = torch.zeros(N_e1, q1, M, device=device, dtype=dtype)#q1 pas sur encore 
 
         # Weighted sum loop
         for h in range(H):
@@ -361,10 +369,11 @@ class AttentionModel(nn.Module):
         # But 'self_mask' is not defined in this scope. If that was part of your code, 
         # you must define it. We'll keep the line as is (though it may error if `self_mask` is missing).
     # Compute regularization term
-        i_indices = torch.arange(N, device=device).unsqueeze(1)
-        j_indices = torch.arange(N, device=device).unsqueeze(0)
-        self_mask = (i_indices != j_indices).float()
-        M_matrix = torch.einsum('ijh,ijk,ij->hk', sf, sf, self_mask)  # Shape: (H, H)
+        # i_indices = torch.arange(N, device=device).unsqueeze(1)
+        # j_indices = torch.arange(N, device=device).unsqueeze(0)
+        # self_mask = (i_indices != j_indices).float()
+        #M_matrix = torch.einsum('ijh,ijk,ij->hk', sf, sf, self_mask)  # Shape: (H, H)
+        M_matrix = torch.einsum('ijh,ijk->hk', sf, sf)  # Shape: (H, H)
         VV = V.view(H, -1)  # Shape: (H, q*q)
         VV_T = VV @ VV.T  # Shape: (H, H)
         sum_J_squared = torch.sum(M_matrix * VV_T)  # Scalar
