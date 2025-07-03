@@ -4,15 +4,20 @@ import numpy as np
 from seq_utils import letter_to_num
 
 class SequencePLM:
-    def __init__(self, J, initial_sequence = None, beta = 1):
+    def __init__(self, J, initial_sequence = None, beta = 1, nb_PCA_comp=0,PCA_component_list=np.array([])):
         """
         Initialize the SequencePLM object with a coupling tensor J of the family and an optional initial sequence.
         """
         self.J = J
         self.L = J.shape[-1]
         self.beta = beta
+        self.nb_PCA_comp=nb_PCA_comp
         if initial_sequence is None:
-            self.sequence = np.random.choice(np.arange(21), self.L) # Sequence of ints (1 to 21)
+            self.sequence = np.random.choice(np.arange(21), self.L-nb_PCA_comp) # Sequence of ints (1 to 21) 
+            if len(PCA_component_list)==nb_PCA_comp:
+                self.sequence = np.concat((self.sequence,PCA_component_list))
+            else:
+                print("number of PCA components doesn't match size of PCA list")
         else:
             self.sequence = initial_sequence
 
@@ -22,9 +27,14 @@ class SequencePLM:
         """
         print("Sequence:", self.sequence)
         num_to_letter = {v: k for k, v in letter_to_num.items()}
-        letter_seq = ''.join([num_to_letter[i] for i in self.sequence])
+        letter_seq = ''.join([num_to_letter[i] for i in self.sequence[:len(self.sequence)-self.nb_PCA_comp]])
         print(letter_seq)
         return letter_seq
+
+    def modify_PCA_target(self,new_PCA_comp):
+        n=len(new_PCA_comp)
+        if n==self.nb_PCA_comp:
+            self.sequence[-self.nb_PCA_comp:]=new_PCA_comp.copy()
 
     def plm_calc(self, site, trial_aa):
         """
