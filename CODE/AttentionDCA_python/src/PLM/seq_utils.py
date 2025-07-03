@@ -69,11 +69,11 @@ def sequences_from_fasta(file_path):
 ################################################################
 # Sequence manipulations
 
-def modify_seq(seq,ratio,aa_list=np.arange(21)):
+def modify_seq(seq,ratio,aa_list=np.arange(21),nb_PCA_comp=0):
     """
     Randomly modifies a sequence by changing a chosen ratio of its elements to random amino acids.
     """
-    L = len(seq)
+    L = len(seq)-nb_PCA_comp
     seq_func = seq.copy()
     nb_change = int(L*ratio)
     ind_change = np.random.choice(np.arange(L), nb_change)
@@ -125,10 +125,10 @@ def letters_to_nums(sequence):
     "receives AA sequence (format ABC... and reutrns [1 2 3 ...])"
     return np.array([letter_to_num.get(aa, 20) for aa in sequence])
 
-def nums_to_letters(sequence):
+def nums_to_letters(sequence,nb_PCA_comp=0):
     """Receives a sequence of integers (e.g., [1, 2, 4]) and returns a string of corresponding amino acid letters."""
     num_to_letter = {v: k for k, v in letter_to_num.items()}
-    return ''.join([num_to_letter.get(num, 'X') for num in sequence])
+    return ''.join([num_to_letter.get(num, 'X') for num in sequence[:len(sequence)-nb_PCA_comp]])
 
 
 
