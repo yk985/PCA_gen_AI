@@ -108,13 +108,14 @@ class AttentionModel_PCA(nn.Module):
         # self.K.data = K
         # self.V.data = V
 
-    def forward(self, Z, weights):
+    def forward(self, Z1,Z2, weights):
         # Forward just calls the loss, as in your original code
-        loss_value = self.loss_wo_J(
+        loss_value = self.loss_wo_J_cross(
             self.Q, 
             self.K, 
             self.V, 
-            Z, 
+            Z1,
+            Z2, 
             weights,
             lambd=self.lambd,
             index_last_domain1=self.index_last_domain1,
@@ -282,109 +283,128 @@ class AttentionModel_PCA(nn.Module):
 
         return sf #shape (N1,N2,H)
 
-    def compute_mat_ene(self, Q, K, V, Z, H1=0, H2=0, index_last_domain1=0):#A revoiiir: ajouter un autre Z ou juste separer dans la fonction pour protein sequence and PCA components
+    def compute_mat_ene_cross(self, Q, K, V, Z1, Z2, H1=0, H2=0, index_last_domain1=0):
+        """
+        Q: Tensor (H, d, N1)
+        K: Tensor (H, d, N2)
+        V: Tensor (H, q1, q2)
+        Z1: LongTensor (N1, M)
+        Z2: LongTensor (N2, M)
+        sf: attention scores (computed from Q, K): (N1, N2, H)
         
-        # We'll assume you intended to call self.compute_attention_heads here.
-        # The old snippet references 'e' out of nowhere, so presumably that was from compute_product_Q_K.
-        # We'll keep the lines exactly the same, except we clarify how 'sf' is obtained.
-
-        # The code below uses variables that appear in the snippet,
-        # but to keep it consistent, let's define them in place:
+        Returns:
+            mat_ene: Tensor (M, N1) — energy matrix per sample and token
+            sf: Tensor (N1, N2, H) — attention weights
+        """
         device = self.device
         dtype = self.dtype
 
         H, q1, q2 = V.shape
-        # For clarity in your snippet, 'e' was from compute_product_Q_K,
-        # and 'sf' is from compute_attention_heads.
-        # We'll compute them inside to match your logic:
+        N1, M = Z1.shape
+        N2 = Z2.shape[0]
+        print("N2: ",N2)
 
         sf = self.compute_attention_heads(
-            Q=Q, 
-            K=K, 
-            V=V, 
-            index_last_domain1=index_last_domain1, 
-            H1=H1, 
-            H2=H2
-        )
+            Q=Q, K=K, V=V, H1=H1, H2=H2, index_last_domain1=index_last_domain1
+        )  # shape: (N1, N2, H)
 
-        # From your snippet, you used e.shape for N_e1, N_e2, H_e,
-        # but actually let's just read from sf itself.
-        N_e1, N_e2, H_e = sf.shape
-        N_Z, M = Z.shape
-        q1,q2=V.shape
-        # assert N_e1 == N_e2 == N_Z, "Mismatch in N between sf and Z"
-        # N = N_e1
+        mat_ene = torch.zeros(M, N1, device=device, dtype=dtype)  # Final energy: (M, N1)
 
-        mat_ene = torch.zeros(N_e1, q1, M, device=device, dtype=dtype)#q1 pas sur encore 
-
-        # Weighted sum loop
         for h in range(H):
-            V_h = V[h]
-            # The next line in your snippet references V_h[:, Z], 
-            # but that can be tricky because Z is shape (N, M).
-            # We keep it as it is in your snippet, trusting you have reason:
-            V_h_Zj = V_h[:, Z]     # shape => (q, N, M)
-            V_h_Zj = V_h_Zj.permute(1, 0, 2)  # => (N, q, M)
+            V_h = V[h]  # shape: (q1, q2)
 
-            mat_ene_h = torch.einsum('ij,jqm->iqm', sf[:, :, h], V_h_Zj)
+            # Z1: (N1, M) → (N1, 1, M)
+            Z1_exp = Z1[:, None, :].expand(N1, N2, M)  # (N1, N2, M)
+            Z2_exp = Z2[None, :, :].expand(N1, N2, M)  # (N1, N2, M)
+
+            # Flatten to (N1*N2*M,)
+            Z1_flat = Z1_exp.reshape(-1)
+            Z2_flat = Z2_exp.reshape(-1)
+
+            # Index into V_h[q1, q2] → result shape (N1*N2*M,)
+            V_selected_flat = V_h[Z1_flat, Z2_flat]
+
+            # Reshape back to (N1, N2, M)
+            V_selected = V_selected_flat.view(N1, N2, M)
+
+            sf_h = sf[:, :, h]  # (N1, N2)
+
+            # Multiply sf_h * V_selected and sum over j (dim=1)
+            mat_ene_h = torch.einsum('ij,ijm->mi', sf_h, V_selected)  # (M, N1)
+
             mat_ene += mat_ene_h
 
-        mat_ene = mat_ene.permute(1, 0, 2)
-        return mat_ene, sf
+        return mat_ene, sf  # mat_ene: (M, N1)
 
-    def loss_wo_J(self, Q, K, V, Z, weights, lambd=0.001, index_last_domain1=0, H1=0, H2=0):
+    def loss_wo_J_cross(self, Q, K, V, Z1, Z2, weights, lambd=0.001, index_last_domain1=0, H1=0, H2=0):
+        """
+        Inputs:
+            Q, K: (H, d, N1/N2)
+            V: (H, q1, q2)
+            Z1: (N1, M)
+            Z2: (N2, M)
+            weights: (M,)
         
+        Returns:
+            loss_value: scalar
+        """
         device = self.device
         dtype = self.dtype
 
-        H, d, N = Q.shape
-        q = V.shape[1]  # Number of amino acids
-        M = Z.shape[1]
+        H, d, N1 = Q.shape
+        N2 = K.shape[2]
+        q1, q2 = V.shape[1], V.shape[2]
+        M = Z1.shape[1]
 
-        # Step: compute mat_ene and sf
-        mat_ene, sf = self.compute_mat_ene(
-            Q, 
-            K, 
-            V, 
-            Z, 
-            H1=H1, 
-            H2=H2, 
-            index_last_domain1=index_last_domain1
-        )  # Shape: (q, N, M)
+        mat_ene, sf = self.compute_mat_ene_cross(
+            Q, K, V, Z1, Z2,
+            H1=H1, H2=H2, index_last_domain1=index_last_domain1
+        )  # mat_ene: (M, N1)
 
-        # logsumexp
-        lge = torch.logsumexp(mat_ene, dim=0)  # Shape: (N, M)
+        # 1. Gather selected true values: J_ij(Z1[i,m], Z2[j,m])
+        # mat_ene[i,m] already contains ∑_j J_ij(Z1[i,m], Z2[j,m])
 
-        Z_indices = Z.unsqueeze(0)  # Shape: (1, N, M)
-        mat_ene_selected = torch.gather(mat_ene, dim=0, index=Z_indices).squeeze(0)  # (N, M)
+        # 2. Compute log-sum-exp normalization:
+        # For each i, m: compute ∑_j J_ij(a, b_j^m) for all a ∈ [0, q1)
+        # We'll loop over a ∈ [0, q1) and build (q1, N1, M)
 
-        pl_elements = weights * (mat_ene_selected - lge) #weighted sum along M
-        pl = -torch.sum(pl_elements) # sum along N
+        logZ = torch.zeros(N1, M, device=device, dtype=dtype)  # log partition
 
-        # For the regularization term, your snippet references M_matrix, etc.
-        # That part of your snippet uses `self_mask`, but it was never fully spelled out. 
-        # We'll keep it exactly as in your snippet:
+        for a in range(q1):
+            log_terms = torch.zeros(N1, M, device=device, dtype=dtype)  # accumulator for each a
 
-        # The snippet tries: M_matrix = torch.einsum('ijh,ijk,ij->hk', sf, sf, self_mask)
-        # But 'self_mask' is not defined in this scope. If that was part of your code, 
-        # you must define it. We'll keep the line as is (though it may error if `self_mask` is missing).
-    # Compute regularization term
-        # i_indices = torch.arange(N, device=device).unsqueeze(1)
-        # j_indices = torch.arange(N, device=device).unsqueeze(0)
-        # self_mask = (i_indices != j_indices).float()
-        #M_matrix = torch.einsum('ijh,ijk,ij->hk', sf, sf, self_mask)  # Shape: (H, H)
-        M_matrix = torch.einsum('ijh,ijk->hk', sf, sf)  # Shape: (H, H)
-        VV = V.view(H, -1)  # Shape: (H, q*q)
-        VV_T = VV @ VV.T  # Shape: (H, H)
-        sum_J_squared = torch.sum(M_matrix * VV_T)  # Scalar
-        reg = lambd * sum_J_squared  # Scalar
+            for h in range(H):
+                V_h = V[h]  # (q1, q2)
+                V_ah = V_h[a]  # (q2,)
+                V_ah_bjm = V_ah[Z2]  # (N2, M)
+
+                sf_h = sf[:, :, h]  # (N1, N2)
+
+                term = torch.einsum('ij,jm->im', sf_h, V_ah_bjm)  # (N1, M)
+                log_terms += term
+
+            logZ[a] = torch.logsumexp(log_terms, dim=0)  # sum over a later
+
+        logZ = torch.logsumexp(logZ, dim=0)  # final shape: (M,)
+
+        # 3. Loss = −sum(weights * (mat_ene - logZ))
+        loss_per_sample = weights * (torch.sum(mat_ene, dim=1) - logZ)  # (M,)
+        pl = -torch.sum(loss_per_sample)  # scalar
+
+        # 4. Regularization (same as before)
+        M_matrix = torch.einsum('ijh,ijk->hk', sf, sf)  # (H, H)
+        VV = V.view(H, -1)  # (H, q1*q2)
+        VV_T = VV @ VV.T  # (H, H)
+        sum_J_squared = torch.sum(M_matrix * VV_T)  # scalar
+        reg = lambd * sum_J_squared
 
         loss_value = pl + reg
 
-        del sf, mat_ene, mat_ene_selected, M, VV_T
+        del sf, mat_ene, logZ, VV_T
         torch.cuda.empty_cache()
-    
+
         return loss_value
+
 
 
 
