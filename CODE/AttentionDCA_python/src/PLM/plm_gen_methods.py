@@ -5,12 +5,12 @@ import os
 import numpy as np
 from tqdm import tqdm
 
-def generate_plm(J,N_seqs=40000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([])):
+def generate_plm(J,N_seqs=40000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([]),J_PCA=None):
     """
     Generate N_seqs new sequences using PLM (random initialization by default)
     """
     gen_sequences = []
-    seq = SequencePLM(J, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=PCA_comp_list)
+    seq = SequencePLM(J, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=PCA_comp_list,J_tens_PCA=J_PCA)
     for _ in tqdm(range(N_seqs)):
         site = np.random.randint(seq.L-nb_PCA_comp)  # Random site from 0 to L-1
         seq.draw_aa(site)
@@ -33,14 +33,14 @@ def generate_plm_alter(J, N_seqs = 10000, N_iters=1000 , init_sequence=None,beta
     gen_sequences = np.array(gen_sequences)
     return gen_sequences
 
-def generate_plm_n_save(save_dir, save_name, J, N_seqs=10000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([])):
+def generate_plm_n_save(save_dir, save_name, J, N_seqs=10000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([]),J_PCA=None):
     """
     Generates a set of sequences using the PLM and saves them both as a numpy file and a text file containing the corresponding letter sequences.
     Saves:
     - A `.npy` file containing the generated sequences in numerical format.
     - A `.txt` file containing the generated sequences in letter format.
     """
-    gen_sequences = generate_plm(J, N_seqs, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_comp_list=PCA_comp_list)
+    gen_sequences = generate_plm(J, N_seqs, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_comp_list=PCA_comp_list,J_PCA=J_PCA)
     gen_sequences_letters = [nums_to_letters(sequence,nb_PCA_comp) for sequence in gen_sequences]
     
     print(f"Generated sequences (letters): {gen_sequences_letters[:5]}")  # Show first 5 sequences

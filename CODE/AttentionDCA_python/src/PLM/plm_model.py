@@ -4,14 +4,17 @@ import numpy as np
 from seq_utils import letter_to_num
 
 class SequencePLM:
-    def __init__(self, J, initial_sequence = None, beta = 1, nb_PCA_comp=0,PCA_component_list=np.array([])):
+    def __init__(self, J, initial_sequence = None, beta = 1, nb_PCA_comp=0,PCA_component_list=np.array([]),J_tens_PCA=None):
         """
         Initialize the SequencePLM object with a coupling tensor J of the family and an optional initial sequence.
         """
         self.J = J
+        self.J_PCA=J_tens_PCA
         self.L = J.shape[-1]
         self.beta = beta
         self.nb_PCA_comp=nb_PCA_comp
+        if nb_PCA_comp!=J_tens_PCA.shape[-1]:
+            print("Mismatch of PCA tensor and nb PCA components indicated")
         if initial_sequence is None:
             self.sequence = np.random.choice(np.arange(21), self.L-nb_PCA_comp) # Sequence of ints (1 to 21) 
             if len(PCA_component_list)==nb_PCA_comp:
@@ -43,7 +46,11 @@ class SequencePLM:
         trial_aa: int from 0 to 21 (amino acid index)
         """
         sum_energy = 0.0
+        if not ( self.J_PCA is None):
+            for i in range(self.nb_PCA_comp):
+                sum_energy+= self.J_PCA[trial_aa,self.sequence[i],site,i]
         for j in range(self.L):
+            
             if j == site:
                 continue
             aa_j = self.sequence[j]
