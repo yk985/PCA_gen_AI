@@ -5,19 +5,28 @@ from seq_utils import letter_to_num
 
 class SequenceGill:
     # Logic: proba to assing a specific AA to a specific site = proba to choose site (uniform distrib) * proba to draw AA at site
-    def __init__(self, J, initial_sequence = None, beta = 1,time=0):
+    def __init__(self, J, initial_sequence = None, beta = 1,time=0,nb_PCA_comp=0,PCA_component_list=np.array([]),J_tens_PCA=None,beta_PCA=1):
         """
         Initialize the SequenceGill object with a coupling tensor J of the family and an optional initial sequence.
         """
         self.J = J
+        self.J_PCA=J_tens_PCA
         self.L = J.shape[-1]
         self.beta = beta
+        self.beta_PCA=beta_PCA
         self.mat_energy=None
         self.old_aa=None
         self.changed_site=None
         self.time=0
+        self.nb_PCA_comp=nb_PCA_comp
+        if nb_PCA_comp!=J_tens_PCA.shape[-1]:
+            print("Mismatch of PCA tensor and nb PCA components indicated")
         if initial_sequence is None:
-            self.sequence = np.random.choice(np.arange(21), self.L)
+            self.sequence = np.random.choice(np.arange(21), self.L-nb_PCA_comp) # Sequence of ints (1 to 21) 
+            if len(PCA_component_list)==nb_PCA_comp:
+                self.sequence = np.concat((self.sequence,PCA_component_list))
+            else:
+                print("number of PCA components doesn't match size of PCA list")
         else:
             self.sequence = initial_sequence
 
@@ -48,6 +57,12 @@ class SequenceGill:
             sum_energy=self.mat_energy[site][trial_aa] +self.J[trial_aa, self.sequence[self.changed_site],site,self.changed_site]- self.J[trial_aa, self.old_aa,site,self.changed_site]
         return sum_energy
     
+    def energy_calc_PCA_contribution(self, site, trial):
+        sum_energy=0.0
+        for i in range(self.nb_PCA_comp):
+            sum_energy+=self.J_PCA[trial,self.sequence[-i-1],site,-i-1]
+        return sum_energy
+
     def site_distribution(self, site, quick=False):
         """
         Compute probability distriution for specific site 
@@ -60,14 +75,36 @@ class SequenceGill:
             probs.append(self.energy_calc(site, trial_aa, quick=quick))
         probs = np.array(probs)
         return probs
+    def site_distribution_PCA_contribution(self, site):
+        """
+        Compute probability distriution for specific site 
+        """
+        probs = []
+        for trial_aa in range(21):
+            # if trial_aa==self.sequence[site]:
+            #     probs.append(0)
+            # else:
+            probs.append(self.energy_calc_PCA_contribution(site, trial_aa))
+        probs = np.array(probs)
+        return probs
     
     def gillespie_seq(self,quick=False):
         """
         return matrix of probabilities of shape (L,21)
         """
         probs=[]
-        for site in range(self.L):
+        for site in range(len(self.sequence)-self.nb_PCA_comp):
             probs.append(self.site_distribution(site,quick=quick))
+        probs= np.array(probs)
+        return probs
+    
+    def gillespie_seq_PCA_contribution(self):
+        """
+        return matrix of probabilities of shape (L,21)
+        """
+        probs=[]
+        for site in range(self.L):
+            probs.append(self.site_distribution_PCA_contribution(site))
         probs= np.array(probs)
         return probs
     
