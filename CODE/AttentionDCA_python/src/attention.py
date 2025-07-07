@@ -277,7 +277,7 @@ def trainer_PCA_comp_2_model(n_epochs, H=32, d=23, batch_size=1000, eta=0.005, l
     Z2=Z[-2:,:]
     W = W / W.sum()  # Normalize weights
     q1 = int(Z1.max()) + 1  # Assuming Z contains 0-based indices
-    q2 = int(Z2.max()) + 1 # à checker avec marzio pour index 0 ou pas 
+    q2 = nb_bins_PCA # à checker avec marzio pour index 0 ou pas 
     N1, M = Z1.shape
     N2, _ = Z2.shape
 
