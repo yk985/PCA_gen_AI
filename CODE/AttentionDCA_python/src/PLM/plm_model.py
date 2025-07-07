@@ -4,7 +4,7 @@ import numpy as np
 from seq_utils import letter_to_num
 
 class SequencePLM:
-    def __init__(self, J, initial_sequence = None, beta = 1, nb_PCA_comp=0,PCA_component_list=np.array([]),J_tens_PCA=None):
+    def __init__(self, J, initial_sequence = None, beta = 1, nb_PCA_comp=0,PCA_component_list=np.array([]),J_tens_PCA=None,beta_PCA=1):
         """
         Initialize the SequencePLM object with a coupling tensor J of the family and an optional initial sequence.
         """
@@ -12,6 +12,7 @@ class SequencePLM:
         self.J_PCA=J_tens_PCA
         #self.L = J.shape[-1]
         self.beta = beta
+        self.beta_PCA=beta_PCA
         self.nb_PCA_comp=nb_PCA_comp
         if nb_PCA_comp!=J_tens_PCA.shape[-1]:
             print("Mismatch of PCA tensor and nb PCA components indicated")
@@ -60,9 +61,9 @@ class SequencePLM:
             if j == site:
                 continue
             aa_j = self.sequence[j]
-            sum_energy += self.J[trial_aa, aa_j, site, j] # check indexing
+            sum_energy += self.beta * self.J[trial_aa, aa_j, site, j] # check indexing
             #sum_energy += self.J[aa_j, trial_aa, j, site] 
-        prob = np.exp(self.beta * sum_energy)  # unnormalized
+        prob = np.exp(sum_energy)  # unnormalized
         return prob
     
     def plm_site_distribution(self, site):
