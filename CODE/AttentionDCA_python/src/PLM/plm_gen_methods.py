@@ -12,7 +12,7 @@ def generate_plm(J,N_seqs=40000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_com
     gen_sequences = []
     seq = SequencePLM(J, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=PCA_comp_list,J_tens_PCA=J_PCA)
     for _ in tqdm(range(N_seqs)):
-        site = np.random.randint(seq.L-nb_PCA_comp)  # Random site from 0 to L-1
+        site = np.random.randint(seq.L) # Random site from 0 to L-1
         seq.draw_aa(site)
         gen_sequences.append(seq.sequence.copy())
     gen_sequences = np.array(gen_sequences)

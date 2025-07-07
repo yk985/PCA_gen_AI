@@ -10,15 +10,19 @@ class SequencePLM:
         """
         self.J = J
         self.J_PCA=J_tens_PCA
-        self.L = J.shape[-1]
+        #self.L = J.shape[-1]
         self.beta = beta
         self.nb_PCA_comp=nb_PCA_comp
         if nb_PCA_comp!=J_tens_PCA.shape[-1]:
             print("Mismatch of PCA tensor and nb PCA components indicated")
+        if J_tens_PCA is None:
+            self.L = J.shape[-1] - nb_PCA_comp  # Length of the sequence without PCA components
+        else:
+            self.L = J.shape[-1]
         if initial_sequence is None:
-            self.sequence = np.random.choice(np.arange(21), self.L-nb_PCA_comp) # Sequence of ints (1 to 21) 
+            self.sequence = np.random.choice(np.arange(21), self.L) # Sequence of ints (1 to 21) 
             if len(PCA_component_list)==nb_PCA_comp:
-                self.sequence = np.concat((self.sequence,PCA_component_list))
+                self.sequence = np.concatenate((self.sequence,PCA_component_list))
             else:
                 print("number of PCA components doesn't match size of PCA list")
         else:
@@ -47,10 +51,12 @@ class SequencePLM:
         """
         sum_energy = 0.0
         if not ( self.J_PCA is None):
+            #for i in range(self.nb_PCA_comp):
+            #    sum_energy+= self.J_PCA[trial_aa,self.sequence[i],site,i]
             for i in range(self.nb_PCA_comp):
-                sum_energy+= self.J_PCA[trial_aa,self.sequence[i],site,i]
+                PCA_coord = self.sequence[self.L + i]  # the PCA coordinate at component i
+                sum_energy += self.J_PCA[trial_aa, PCA_coord, site, i]
         for j in range(self.L):
-            
             if j == site:
                 continue
             aa_j = self.sequence[j]
