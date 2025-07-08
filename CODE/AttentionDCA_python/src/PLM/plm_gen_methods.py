@@ -64,3 +64,51 @@ def generate_plm_n_save(save_dir, save_name, J, N_seqs=10000, init_sequence=None
             f.write(f"{sequence}\n")
 
     print(f"Generated sequences saved to {save_dir}")
+
+def generate_PCA_coords(init_sequence, N_iter, J_PCA, nb_PCA_comp=2, beta_PCA=1, J=None, PCA_comp_list=None, beta=1):
+    """
+    Generate PCA coordinates for the sequences.
+    """
+    if J_PCA is None:
+        return np.zeros(nb_PCA_comp)
+    PCA_coords = []
+    seq = SequencePLM(J, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=PCA_comp_list,J_tens_PCA=J_PCA,beta_PCA=beta_PCA)
+    for _ in tqdm(range(N_iter)):
+        PCA_coord = seq.update_PCA_coords()
+        PCA_coords.append(PCA_coord)
+    return PCA_coords
+    
+def generate_coords_n_save(save_dir, save_name, J, N_iter=10000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([]),J_PCA=None,beta_PCA=1):
+    """
+    Generates a set of sequences using the PLM and saves them both as a numpy file and a text file containing the corresponding letter sequences.
+    Saves:
+    - A `.npy` file containing the generated sequences in numerical format.
+    - A `.txt` file containing the generated sequences in letter format.
+    """
+    PCA_coords = generate_PCA_coords(init_sequence=init_sequence, N_iter=N_iter, J_PCA=J_PCA,
+                                     nb_PCA_comp=nb_PCA_comp,
+                                     beta_PCA=beta_PCA,
+                                     J=J,
+                                     PCA_comp_list=PCA_comp_list, beta=beta)
+
+    PCA_coords = np.array(PCA_coords)
+
+    if nb_PCA_comp != 0:
+        save_dir = save_dir + "_PCA_coord"
+        save_name = save_name + "_PCA_coord"
+        for i in PCA_coords[0]:
+            save_dir += str(i) + "_"
+
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    # Save as .npy
+    np.save(f"{save_dir}/{save_name}.npy", PCA_coords)
+
+    # Save as .txt
+    with open(f"{save_dir}/{save_name}.txt", "w") as f:
+        for coords in PCA_coords:
+            line = ' '.join(map(str, coords))
+            f.write(f"{line}\n")
+
+    print(f"PCA coordinates saved to {save_dir}")
