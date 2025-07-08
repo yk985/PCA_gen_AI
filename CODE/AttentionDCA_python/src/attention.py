@@ -158,7 +158,7 @@ def trainer_PCA_comp_brute_force(n_epochs, H=32, d=23, batch_size=1000, eta=0.00
     Z, W = quickread(filename,max_gap_frac=max_gap_frac)
     Z=add_PCA_coords(Z.T,nb_bins_PCA).T
     W = W / W.sum()  # Normalize weights
-    q = int(Z.max()) + 1  # Assuming Z contains 0-based indices
+    q = int(max(int(Z.max()) + 1,nb_bins_PCA))  # Assuming Z contains 0-based indices
     N, M = Z.shape
     print(N)
 
