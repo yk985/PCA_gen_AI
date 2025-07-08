@@ -56,14 +56,17 @@ class SequencePLM:
             #    sum_energy+= self.J_PCA[trial_aa,self.sequence[i],site,i]
             for i in range(self.nb_PCA_comp):
                 PCA_coord = self.sequence[self.L + i]  # the PCA coordinate at component i
-                sum_energy += self.J_PCA[trial_aa, PCA_coord, site, i]
+                sum_energy += self.beta_PCA*self.J_PCA[trial_aa, PCA_coord, site, i]
+        else:
+            for i in range(self.nb_PCA_comp):
+                sum_energy+=self.beta_PCA*self.J[trial_aa,self.sequence[self.L+i],site,self.L+i]
         for j in range(self.L):
             if j == site:
                 continue
             aa_j = self.sequence[j]
             sum_energy += self.beta * self.J[trial_aa, aa_j, site, j] # check indexing
             #sum_energy += self.J[aa_j, trial_aa, j, site] 
-        prob = np.exp(sum_energy)  # unnormalized
+        prob = sum_energy  
         return prob
     
     def plm_site_distribution(self, site):
@@ -74,6 +77,7 @@ class SequencePLM:
         for trial_aa in range(21):
             probs.append(self.plm_calc(site, trial_aa))
         probs = np.array(probs)
+        probs = np.exp(probs-probs.max()) #to avoid overflow for high beta
         probs /= probs.sum()
         return probs
     
