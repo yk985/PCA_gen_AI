@@ -112,3 +112,43 @@ def generate_coords_n_save(save_dir, save_name, J, N_iter=10000, init_sequence=N
             f.write(f"{line}\n")
 
     print(f"PCA coordinates saved to {save_dir}")
+
+
+def generate_multiple_targets_n_save(save_dir, save_name_prefix, J, target_coords_list, N_seqs=1000, init_sequence=None, beta=1, nb_PCA_comp=0, J_PCA=None, beta_PCA=1):
+    """
+    For each target coordinate in the target_coords_list, generate N_seqs sequences using PLM and save them.
+
+    Args:
+        save_dir (str): Directory to save outputs.
+        save_name_prefix (str): Prefix for filenames.
+        J, beta, etc.: Model parameters.
+        target_coords_list (list): List of target coordinates, each to be used for sequence generation.
+    """
+    for idx, target_coords in enumerate(target_coords_list):
+        # Generate sequences
+        gen_sequences = generate_plm(J, N_seqs, init_sequence, beta=beta, nb_PCA_comp=nb_PCA_comp, PCA_comp_list=target_coords, J_PCA=J_PCA, beta_PCA=beta_PCA)
+        
+        gen_sequences_letters = [nums_to_letters(sequence, nb_PCA_comp) for sequence in gen_sequences]
+        print(f"[{idx}] Generated sequences for target {target_coords} (first 5): {gen_sequences_letters[:5]}")
+
+        # Save directory and file name adjustments
+        subdir = f"{save_dir}/target_" + "_".join(map(str, target_coords))
+        filename = f"{save_name_prefix}_target_" + "_".join(map(str, target_coords))
+
+        if nb_PCA_comp != 0:
+            subdir += "_PCAcomp"
+            filename += "_PCAcomp"
+            for i in gen_sequences[0, len(gen_sequences[0]) - nb_PCA_comp:]:
+                subdir += str(i) + "_"
+
+        if not os.path.exists(subdir):
+            os.makedirs(subdir)
+
+        # Save in .npy format
+        np.save(f"{subdir}/{filename}.npy", gen_sequences)
+
+        # Save in .txt format
+        with open(f"{subdir}/{filename}.txt", "w") as f:
+            for sequence in gen_sequences_letters:
+                f.write(f"{sequence}\n")
+

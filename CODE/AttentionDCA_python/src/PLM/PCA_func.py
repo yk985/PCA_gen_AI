@@ -24,6 +24,104 @@ matplotlib.rc('font', **font)
 
 ############### PCA function #################################
 
+def plot_projected_pca_mult(
+    sequences_reference,
+    list_of_sequences_to_project,
+    target_coords_list,
+    title="PCA: Reference vs Multiple Targets",
+    max_pot=21,
+    save_path=None,
+    restrict_axes=True,
+    Nbins=None,
+    point_alpha=0.5,
+    colors=None
+    ):
+    """
+    Projects multiple sets of generated sequences into the PCA space of reference sequences
+    and shows all projections in a single plot with target coordinate markers.
+
+    Parameters:
+    - sequences_reference: list of reference sequences (str or int)
+    - list_of_sequences_to_project: list of sequence lists (one for each target)
+    - target_coords_list: list of (x, y) grid bin pairs, same order as above
+    - title: plot title
+    - max_pot: number of symbols (21 for amino acids)
+    - save_path: if provided, saves figure to this path
+    - restrict_axes: restrict axis limits based on reference
+    - Nbins: number of bins in PCA space (for grid lines and target point projection)
+    - point_alpha: transparency of projected sequence points
+    - colors: optional list of colors (one per target set)
+    """
+
+    if isinstance(sequences_reference[0], str):
+        sequences_reference = [letters_to_nums(seq) for seq in sequences_reference]
+    one_hot_ref = one_hot_seq_batch(sequences_reference, max_pot=max_pot)
+    ref_flat = one_hot_ref.reshape(one_hot_ref.shape[0], -1)
+
+    # Fit scaler and PCA on reference
+    scaler = StandardScaler()
+    ref_scaled = scaler.fit_transform(ref_flat)
+    pca = PCA(n_components=2)
+    ref_pca = pca.fit_transform(ref_scaled)
+
+    # Plot base reference sequences
+    plt.figure(figsize=(10, 8))
+    plt.scatter(ref_pca[:, 0], ref_pca[:, 1], alpha=0.3, s=8, label="Reference")
+
+    x_min, x_max = ref_pca[:, 0].min(), ref_pca[:, 0].max()
+    y_min, y_max = ref_pca[:, 1].min(), ref_pca[:, 1].max()
+
+    # Prepare colors
+    if colors is None:
+        colors = plt.cm.get_cmap('tab10', len(list_of_sequences_to_project))
+
+    # Plot projected sequences for each target
+    for idx, (seqs, coords) in enumerate(zip(list_of_sequences_to_project, target_coords_list)):
+        if isinstance(seqs[0], str):
+            seqs = [letters_to_nums(seq) for seq in seqs]
+        one_hot_proj = one_hot_seq_batch(seqs, max_pot=max_pot)
+        proj_flat = one_hot_proj.reshape(one_hot_proj.shape[0], -1)
+        proj_scaled = scaler.transform(proj_flat)
+        proj_pca = pca.transform(proj_scaled)
+
+        color = colors(idx) if callable(colors) else colors[idx]
+        label = f"Target {coords}"
+        plt.scatter(proj_pca[:, 0], proj_pca[:, 1], alpha=point_alpha, s=10, color=color, label=label)
+
+        # Show target location on grid
+        if Nbins is not None:
+            gx, gy = coords
+            tx = x_min + (gx + 0.5) * (x_max - x_min) / Nbins
+            ty = y_min + (gy + 0.5) * (y_max - y_min) / Nbins
+            plt.scatter(tx, ty, color=color, edgecolors='black', s=80, marker='X')
+
+    # Grid overlay (if using bins)
+    if Nbins is not None:
+        for i in range(Nbins + 1):
+            x = x_min + i * (x_max - x_min) / Nbins
+            y = y_min + i * (y_max - y_min) / Nbins
+            plt.axvline(x, color='lightgray', linewidth=0.5)
+            plt.axhline(y, color='lightgray', linewidth=0.5)
+
+    # Plot styling
+    plt.title(title)
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.legend()
+    plt.grid(False)
+
+    if restrict_axes:
+        x_margin = 0.1 * (x_max - x_min)
+        y_margin = 0.1 * (y_max - y_min)
+        plt.xlim(x_min - x_margin, x_max + x_margin)
+        plt.ylim(y_min - y_margin, y_max + y_margin)
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight")
+
+    plt.show()
+
+
 def plot_projected_pca(sequences_reference, sequences_to_project, 
                        title="PCA: Reference vs Projected Sequences", 
                        max_pot=21, save_path=None, restrict_axes=True,
