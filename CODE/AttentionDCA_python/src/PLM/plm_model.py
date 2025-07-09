@@ -14,8 +14,9 @@ class SequencePLM:
         self.beta = beta
         self.beta_PCA=beta_PCA
         self.nb_PCA_comp=nb_PCA_comp
-        if nb_PCA_comp!=J_tens_PCA.shape[-1]:
-            print("Mismatch of PCA tensor and nb PCA components indicated")
+        if not (J_tens_PCA is None):
+            if nb_PCA_comp!=J_tens_PCA.shape[-1]:
+                print("Mismatch of PCA tensor and nb PCA components indicated")
         if J_tens_PCA is None:
             self.L = J.shape[-1] - nb_PCA_comp  # Length of the sequence without PCA components
         else:
