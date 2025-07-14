@@ -115,6 +115,93 @@ def plot_projected_pca_mult(
 
     plt.show()
 
+def plot_projected_pca_time(sequences_reference, sequences_to_project, 
+                       title="PCA: Reference vs Projected Sequences", 
+                       max_pot=21, save_path=None, restrict_axes=True,
+                       Nbins=None, target_coords=None, cmap='plasma'):
+    """
+    Projects `sequences_to_project` into the PCA space of `sequences_reference` and plots the PCA.
+    Projects are colored by sequence index (used as a proxy for time).
+    """
+
+    # Convert to numerical if needed
+    if isinstance(sequences_reference[0], str):
+        sequences_reference = [letters_to_nums(seq) for seq in sequences_reference]
+    if isinstance(sequences_to_project[0], str):
+        sequences_to_project = [letters_to_nums(seq) for seq in sequences_to_project]
+
+    # One-hot encode
+    one_hot_ref = one_hot_seq_batch(sequences_reference, max_pot=max_pot)
+    one_hot_proj = one_hot_seq_batch(sequences_to_project, max_pot=max_pot)
+
+    # Flatten
+    ref_flat = one_hot_ref.reshape(one_hot_ref.shape[0], -1)
+    proj_flat = one_hot_proj.reshape(one_hot_proj.shape[0], -1)
+
+    # Scale using reference stats
+    scaler = StandardScaler()
+    ref_scaled = scaler.fit_transform(ref_flat)
+    proj_scaled = scaler.transform(proj_flat)
+
+    # PCA on reference only
+    pca = PCA(n_components=2)
+    ref_pca = pca.fit_transform(ref_scaled)
+    proj_pca = pca.transform(proj_scaled)
+
+    # Plot
+    plt.figure(figsize=(8, 6))
+    plt.scatter(ref_pca[:, 0], ref_pca[:, 1], alpha=0.4, s=10, label='Reference Sequences')
+
+    # Use sequence index as color for projected points
+    time_indices = np.arange(len(proj_pca))
+    sc = plt.scatter(proj_pca[:, 0], proj_pca[:, 1], c=time_indices, cmap=cmap, s=10, label='Projected Sequences')
+
+    # Colorbar to show sequence index (time)
+    cbar = plt.colorbar(sc)
+    cbar.set_label("Sequence index (time)")
+
+    # Grid bounds
+    x_min, x_max = ref_pca[:, 0].min(), ref_pca[:, 0].max()
+    y_min, y_max = ref_pca[:, 1].min(), ref_pca[:, 1].max()
+
+    if Nbins is not None:
+        # Draw vertical and horizontal grid lines
+        for i in range(Nbins + 1):
+            x = x_min + i * (x_max - x_min) / Nbins
+            y = y_min + i * (y_max - y_min) / Nbins
+            plt.axvline(x, color='lightgray', linewidth=0.5)
+            plt.axhline(y, color='lightgray', linewidth=0.5)
+
+        # Draw target points if provided
+        if target_coords is not None:
+            if isinstance(target_coords, np.ndarray) and target_coords.ndim == 1 and len(target_coords) == 2:
+                gx, gy = target_coords
+                tx = x_min + (gx + 0.5) * (x_max - x_min) / Nbins
+                ty = y_min + (gy + 0.5) * (y_max - y_min) / Nbins
+                plt.scatter(tx, ty, color='red', s=80, edgecolors='black', label=f'Target ({int(gx)},{int(gy)})')
+            else:
+                for i, (gx, gy) in enumerate(target_coords):
+                    tx = x_min + (gx + 0.5) * (x_max - x_min) / Nbins
+                    ty = y_min + (gy + 0.5) * (y_max - y_min) / Nbins
+                    label = f'Target ({int(gx)},{int(gy)})' if i == 0 else None
+                    plt.scatter(tx, ty, color='red', s=80, edgecolors='black', label=label)
+
+    plt.title(title)
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.grid(False)
+    plt.legend(loc='best')
+
+    if restrict_axes:
+        x_margin = 0.1 * (x_max - x_min)
+        y_margin = 0.1 * (y_max - y_min)
+        plt.xlim(x_min - x_margin, x_max + x_margin)
+        plt.ylim(y_min - y_margin, y_max + y_margin)
+
+    if save_path:
+        plt.savefig(save_path)
+
+    plt.show()
 
 
 def plot_projected_pca(sequences_reference, sequences_to_project, 
