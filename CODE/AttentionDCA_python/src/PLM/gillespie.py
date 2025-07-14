@@ -11,18 +11,24 @@ class SequenceGill:
         """
         self.J = J
         self.J_PCA=J_tens_PCA
-        self.L = J.shape[-1]
+        if not (J_tens_PCA is None):
+            if nb_PCA_comp!=J_tens_PCA.shape[-1]:
+                print("Mismatch of PCA tensor and nb PCA components indicated")
+        if J_tens_PCA is None:
+            self.L = J.shape[-1] - nb_PCA_comp  # Length of the sequence without PCA components
         self.beta = beta
         self.beta_PCA=beta_PCA
         self.mat_energy=None
+        self.mat_energy_PCA=None
         self.old_aa=None
         self.changed_site=None
         self.time=0
         self.nb_PCA_comp=nb_PCA_comp
-        if nb_PCA_comp!=J_tens_PCA.shape[-1]:
-            print("Mismatch of PCA tensor and nb PCA components indicated")
+        if not (J_tens_PCA is None):
+            if nb_PCA_comp!=J_tens_PCA.shape[-1]:
+                print("Mismatch of PCA tensor and nb PCA components indicated")
         if initial_sequence is None:
-            self.sequence = np.random.choice(np.arange(21), self.L-nb_PCA_comp) # Sequence of ints (1 to 21) 
+            self.sequence = np.random.choice(np.arange(21), self.L) # Sequence of ints (1 to 21) 
             if len(PCA_component_list)==nb_PCA_comp:
                 self.sequence = np.concat((self.sequence,PCA_component_list))
             else:
@@ -59,8 +65,12 @@ class SequenceGill:
     
     def energy_calc_PCA_contribution(self, site, trial):
         sum_energy=0.0
-        for i in range(self.nb_PCA_comp):
-            sum_energy+=self.J_PCA[trial,self.sequence[-i-1],site,-i-1]
+        if self.J_PCA is None:
+            for i in range(self.nb_PCA_comp):
+                sum_energy+=self.J[trial,self.sequence[-i-1],site,-i-1]
+        else:
+            for i in range(self.nb_PCA_comp):
+                sum_energy+=self.J_PCA[trial,self.sequence[-i-1],site,-i-1]
         return sum_energy
 
     def site_distribution(self, site, quick=False):
@@ -114,15 +124,24 @@ class SequenceGill:
             delta_energy[site,:]=self.mat_energy[site][self.sequence[site]]*np.ones(self.mat_energy.shape[1])
         return self.mat_energy-delta_energy
     
+    def calc_transition_matrix_pca(self):
+        delta_energy=np.zeros_like(self.mat_energy_PCA)
+        for site in range(self.L):
+            delta_energy[site,:]=self.mat_energy_PCA[site][self.sequence[site]]*np.ones(self.mat_energy.shape[1])
+        return self.mat_energy_PCA-delta_energy
     def draw_aa(self):
         """
         Sample a new AA at the given site from PLM distribution
         """
         if self.mat_energy is None: 
             self.mat_energy=self.gillespie_seq()
+            
         else:
             self.mat_energy = self.gillespie_seq(quick=True)
-        transitions_matrix=self.calc_transition_matrix()
+        self.mat_energy_PCA=self.gillespie_seq_PCA_contribution()
+        transitions_matrix_seq=self.calc_transition_matrix()
+        transitions_matrix_PCA=self.calc_transition_matrix_pca()
+        transitions_matrix=self.beta*transitions_matrix_seq+self.beta_PCA*transitions_matrix_PCA
         transitions_matrix[ transitions_matrix>=0 ] = 0
         probs=np.exp(self.beta*transitions_matrix)
         for site in range(self.L):

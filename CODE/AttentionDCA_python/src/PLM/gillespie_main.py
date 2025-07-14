@@ -14,10 +14,10 @@ from seq_utils import nums_to_letters, modify_seq, letters_to_nums, set_seed, re
 
 #-----------------------------------Functions--------------------------------------------
 
-def gennerate_gill(J,N_seqs=40000, init_sequence=None, beta=1):
+def gennerate_gill(J,N_seqs=40000, init_sequence=None, beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([]),J_PCA=None,beta_PCA=1):
     gen_sequences = []
     time_seq=[]
-    seq = SequenceGill(J, init_sequence, beta=beta)
+    seq = SequenceGill(J, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=PCA_comp_list,J_tens_PCA=J_PCA,beta_PCA=beta_PCA)
     for _ in tqdm(range(N_seqs)):
         seq.draw_aa()
         gen_sequences.append(seq.sequence.copy())
@@ -26,20 +26,24 @@ def gennerate_gill(J,N_seqs=40000, init_sequence=None, beta=1):
     time_seq = np.array(time_seq)
     return gen_sequences, time_seq
 
-def generate_gill_n_save(save_dir, save_name, J, N_seqs=10000, init_sequence=None,beta=1):
+def generate_gill_n_save(save_dir, save_name, J, N_seqs=10000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([]),J_PCA=None,beta_PCA=1):
     """
     Generates a set of sequences using Gillespie and saves them both as a numpy file and a text file containing the corresponding letter sequences.
     Saves:
     - A `.npy` file containing the generated sequences in numerical format.
     - A `.txt` file containing the generated sequences in letter format.
     """
-    gen_sequences, time_seq = gennerate_gill(J, N_seqs, init_sequence,beta=beta)
-    gen_sequences_letters = [nums_to_letters(sequence) for sequence in gen_sequences]
+    gen_sequences, time_seq = gennerate_gill(J, N_seqs, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_comp_list=PCA_comp_list,J_PCA=J_PCA,beta_PCA=beta_PCA)
+    gen_sequences_letters = [nums_to_letters(sequence,nb_PCA_comp) for sequence in gen_sequences]
     
     print(f"Generated sequences (letters): {gen_sequences_letters[:5]}")  # Show first 5 sequences
     
     gen_sequences = np.array(gen_sequences)
-        
+    if nb_PCA_comp!=0:
+        save_dir=save_dir+"PCA_comp"
+        save_name=save_name+"PCA_comp"
+        for i in gen_sequences[0,len(gen_sequences)-nb_PCA_comp:]:
+            save_dir+=str(i)+"_"      
     # Check if the directory exists, create it if not
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
