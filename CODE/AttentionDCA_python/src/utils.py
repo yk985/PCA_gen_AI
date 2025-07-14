@@ -98,6 +98,47 @@ def add_PCA_coords(seqs, N, max_pot=21,  plot= False, highlight_index=None):
 
     return seqs_pca
 
+
+def add_coords_flat(seqs, N, max_pot=21, plot=False, highlight_index=None):
+    """
+    Compute 2D PCA coordinates from sequences, discretize to NxN grid,
+    and flatten grid coords into a single int in [0, N^2 - 1].
+    rule: i = y * N + x
+
+    Parameters:
+    - seqs: numeric numpy array of sequences (shape: [num_seq, L])
+    - N: grid size (int), will produce coordinates in [0, N*N - 1]
+    - max_pot: for one-hot encoding (default=21)
+    - plot: show PCA grid plot if True
+    - highlight_index: optional index to highlight on plot
+
+    Returns:
+    - seqs_pca_flat: numpy array (shape: [num_seq, L+1])
+    """
+    # 1) Compute 2D PCA coordinates from sequences
+    pca_coords = get_sequences_pca_coords(seqs, max_pot=max_pot)
+
+    # 2) Discretize PCA coords into NxN grid
+    grid_coords = get_PCA_grid_coords(pca_coords, N, plot=plot, highlight_index=highlight_index)
+
+    # 3) Flatten 2D grid coordinates to single integer
+    flat_coords = grid_coords[:, 1] * N + grid_coords[:, 0]  # y * N + x
+
+    # 4) Stack with original sequences
+    seqs_array = np.array(seqs)
+    if seqs_array.ndim != 2:
+        raise ValueError("Input sequences must be a 2D numeric array")
+
+    flat_coords = flat_coords.reshape(-1, 1)
+    seqs_pca_flat = np.hstack((seqs_array, flat_coords))
+
+    # 5) Validate shape
+    expected_cols = seqs_array.shape[1] + 1
+    if seqs_pca_flat.shape[1] != expected_cols:
+        raise ValueError(f"Expected shape ({seqs_array.shape[0]}, {expected_cols}), got {seqs_pca_flat.shape}")
+
+    return seqs_pca_flat
+
 def open_fasta(filename):
     if filename.endswith('.gz'):
         return gzip.open(filename, 'rt')

@@ -27,6 +27,23 @@ class SequencePLM:
                 self.sequence = np.concatenate((self.sequence,PCA_component_list))
             else:
                 print("number of PCA components doesn't match size of PCA list")
+            #if len(PCA_component_list) == nb_PCA_comp:
+            #    if nb_PCA_comp == 1:
+            #        print('here')
+            #    # Expecting 2D coordinates (x, y), flatten into 1D bin index
+            #        first_comp = PCA_component_list[0]
+            #        if isinstance(first_comp, (tuple, list, np.ndarray)) and len(first_comp) == 2:
+            #            x, y = first_comp
+            #            flat_coord = x * self.nb_bins_PCA + y  # flatten 2D coords
+            #            self.sequence = np.concatenate((self.sequence, [flat_coord]))
+            #        else:
+            #        # Already flattened or just one value
+            #            self.sequence = np.concatenate((self.sequence, [first_comp]))
+            #    else:
+            #    # nb_PCA_comp > 1: assume already in flattened or separate components
+            #        self.sequence = np.concatenate((self.sequence, PCA_component_list))
+            #else:
+            #    raise ValueError("Number of PCA components doesn't match PCA_component_list")
         else:
             self.sequence = initial_sequence
 

@@ -33,25 +33,12 @@ def plot_projected_pca_mult(
     save_path=None,
     restrict_axes=True,
     Nbins=None,
-    point_alpha=0.5,
-    colors=None
-    ):
-    """
-    Projects multiple sets of generated sequences into the PCA space of reference sequences
-    and shows all projections in a single plot with target coordinate markers.
-
-    Parameters:
-    - sequences_reference: list of reference sequences (str or int)
-    - list_of_sequences_to_project: list of sequence lists (one for each target)
-    - target_coords_list: list of (x, y) grid bin pairs, same order as above
-    - title: plot title
-    - max_pot: number of symbols (21 for amino acids)
-    - save_path: if provided, saves figure to this path
-    - restrict_axes: restrict axis limits based on reference
-    - Nbins: number of bins in PCA space (for grid lines and target point projection)
-    - point_alpha: transparency of projected sequence points
-    - colors: optional list of colors (one per target set)
-    """
+    point_alpha=0.5
+):
+    import matplotlib.pyplot as plt
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+    import matplotlib.cm as cm
 
     if isinstance(sequences_reference[0], str):
         sequences_reference = [letters_to_nums(seq) for seq in sequences_reference]
@@ -64,19 +51,21 @@ def plot_projected_pca_mult(
     pca = PCA(n_components=2)
     ref_pca = pca.fit_transform(ref_scaled)
 
-    # Plot base reference sequences
+    # Plot reference sequences
     plt.figure(figsize=(10, 8))
-    plt.scatter(ref_pca[:, 0], ref_pca[:, 1], alpha=0.3, s=8, label="Reference")
+    plt.scatter(ref_pca[:, 0], ref_pca[:, 1], alpha=0.3, s=8, color="blue", label="Reference")
 
     x_min, x_max = ref_pca[:, 0].min(), ref_pca[:, 0].max()
     y_min, y_max = ref_pca[:, 1].min(), ref_pca[:, 1].max()
 
-    # Prepare colors
-    if colors is None:
-        colors = plt.cm.get_cmap('tab10', len(list_of_sequences_to_project))
+    # Prepare colors for generated groups
+    cmap = cm.get_cmap('tab10', len(list_of_sequences_to_project))
 
-    # Plot projected sequences for each target
-    for idx, (seqs, coords) in enumerate(zip(list_of_sequences_to_project, target_coords_list)):
+    # Keep track of which labels are used to avoid duplicates
+    labels_used = set()
+
+    # Plot each group of generated sequences with different color
+    for idx, seqs in enumerate(list_of_sequences_to_project):
         if isinstance(seqs[0], str):
             seqs = [letters_to_nums(seq) for seq in seqs]
         one_hot_proj = one_hot_seq_batch(seqs, max_pot=max_pot)
@@ -84,19 +73,24 @@ def plot_projected_pca_mult(
         proj_scaled = scaler.transform(proj_flat)
         proj_pca = pca.transform(proj_scaled)
 
-        color = colors(idx) if callable(colors) else colors[idx]
-        label = f"Target {coords}"
+        color = cmap(idx)
+        label = "Generated"
+        # Only add label for the first group to avoid legend duplicates
+        if label in labels_used:
+            label = None
+        else:
+            labels_used.add(label)
+
         plt.scatter(proj_pca[:, 0], proj_pca[:, 1], alpha=point_alpha, s=10, color=color, label=label)
 
-        # Show target location on grid
-        if Nbins is not None:
-            gx, gy = coords
+    # Plot target coordinates on top, in red X
+    if Nbins is not None:
+        for gx, gy in target_coords_list:
             tx = x_min + (gx + 0.5) * (x_max - x_min) / Nbins
             ty = y_min + (gy + 0.5) * (y_max - y_min) / Nbins
-            plt.scatter(tx, ty, color=color, edgecolors='black', s=80, marker='X')
+            plt.scatter(tx, ty, color='red', edgecolors='black', s=100, marker='X')
 
-    # Grid overlay (if using bins)
-    if Nbins is not None:
+        # Optional: draw grid
         for i in range(Nbins + 1):
             x = x_min + i * (x_max - x_min) / Nbins
             y = y_min + i * (y_max - y_min) / Nbins
@@ -120,6 +114,7 @@ def plot_projected_pca_mult(
         plt.savefig(save_path, bbox_inches="tight")
 
     plt.show()
+
 
 
 def plot_projected_pca(sequences_reference, sequences_to_project, 
