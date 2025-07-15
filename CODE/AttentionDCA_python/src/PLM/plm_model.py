@@ -107,7 +107,7 @@ class SequencePLM:
         new_aa = np.random.choice(21, p=probs) # aa from 0 to 20
         self.sequence[site] = new_aa
 
-    def update_PCA_coords(self, plot=True):
+    def update_PCA_coords(self, model, plot=True):
         """
         Jointly update both PCA coordinates using Boltzmann sampling
         based on PLM-derived J_PCA tensor and the current amino acid sequence.
@@ -123,18 +123,7 @@ class SequencePLM:
         Nbins = self.J_PCA.shape[1]
         offset = L  # Start index of PCA coords in self.sequence
         probs_2D = np.zeros((Nbins, Nbins))
-        energies_2D = np.zeros((Nbins, Nbins))
-
-        # Compute energy for each (i,j) PCA coordinate pair
-        for i in range(Nbins):  # PCA component 0
-            for j in range(Nbins):  # PCA component 1
-                energy = 0.0
-                for pos in range(L):
-                    aa = self.sequence[pos]
-                    energy += self.beta_PCA * (
-                        self.J_PCA[aa, i, pos, 0] + self.J_PCA[aa, j, pos, 1]
-                    )
-                energies_2D[i, j] = energy  # Store energy for visualization
+        energies_2D = self.compute_coord_energy(model)
 
         # Numerically stable softmax
         shifted_energies = -self.beta_PCA * energies_2D
@@ -185,7 +174,50 @@ class SequencePLM:
 
         return np.array([i_sampled, j_sampled])
     
+    def compute_coord_energy(self, model):
+        """
+        model = 1,2,3
+        """
+        L = self.L
+        Nbins = self.J_PCA.shape[1]
+        offset = L 
+        energies_2D = np.zeros((Nbins, Nbins))
+        energies_flat = np.zeros((Nbins*Nbins))
+        if model == 1:
+            for i in range(Nbins):  # PCA comp 0
+                for j in range(Nbins):  # PCA comp 1
+                    energy = 0.0
+                    for pos in range(L):  # real amino acid sites
+                        aa = self.sequence[pos]  # actual residue index (0–20)
+                        # Interact with PCA comp 0 (stored at position L)
+                        pca_aa0 = i  # interpreted as "amino acid index" at pos = L
+                        energy += self.J_PCA[aa, pca_aa0, pos, 0]
 
+                        # Interact with PCA comp 1 (stored at position L+1)
+                        pca_aa1 = j
+                        energy += self.J_PCA[aa, pca_aa1, pos, 1]
+            # Scale by beta_PCA (if used only for PCA couplings)
+                    energies_2D[i, j] = self.beta_PCA * energy
+
+        elif model == 2:
+        # Compute energy for each (i,j) PCA coordinate pair
+            for i in range(Nbins):  # PCA component 0
+                for j in range(Nbins):  # PCA component 1
+                    energy = 0.0
+                    for pos in range(L):
+                        aa = self.sequence[pos]
+                        energy += self.beta_PCA * (self.J_PCA[aa, i, pos, 0] + self.J_PCA[aa, j, pos, 1])
+                    energies_2D[i, j] = energy  # Store energy for visualization
+
+        elif model == 3:
+            for i in range(Nbins):
+                energy = 0.0
+                for pos in range(L):
+                    aa = self.sequence[pos]
+                    energy += self.beta_PCA * (self.J_PCA[aa, i, pos])
+                energies_flat[i] = energy
+            energies_2D = energies_flat.reshape((Nbins, Nbins))
+        return energies_2D
 
     def seq_energy(self):
         sum=0

@@ -22,6 +22,56 @@ font = {'size'   : 18}
 
 matplotlib.rc('font', **font)
 
+
+############### PCA distances #################################
+def distance_to_target(sequences, target, reference_sequences, max_pot=21):
+    """
+    Compute Euclidean distance of each sequence to a target point in PCA space.
+
+    Args:
+        sequences: list of sequences (str or int-list)
+        target: target PCA coordinates (shape: [2] or [n_targets, 2])
+        reference_sequences: list of reference sequences for PCA fitting
+        max_pot: number of amino acid types (default 21)
+
+    Returns:
+        distances: np.array of shape (n_sequences,) with distances to target
+    """
+    # 1. Convert to numeric if needed
+    if isinstance(sequences[0], str):
+        sequences = [letters_to_nums(seq) for seq in sequences]
+    if isinstance(reference_sequences[0], str):
+        reference_sequences = [letters_to_nums(seq) for seq in reference_sequences]
+
+    # 2. One-hot encode
+    one_hot_seqs = one_hot_seq_batch(sequences, max_pot=max_pot)
+    one_hot_ref = one_hot_seq_batch(reference_sequences, max_pot=max_pot)
+
+    # 3. Flatten
+    seqs_flat = one_hot_seqs.reshape(one_hot_seqs.shape[0], -1)
+    ref_flat = one_hot_ref.reshape(one_hot_ref.shape[0], -1)
+
+    # 4. Scale using reference stats
+    scaler = StandardScaler()
+    ref_scaled = scaler.fit_transform(ref_flat)
+    seqs_scaled = scaler.transform(seqs_flat)
+
+    # 5. Fit PCA on reference, transform sequences
+    pca = PCA(n_components=2)
+    pca.fit(ref_scaled)
+    projected = pca.transform(seqs_scaled)  # shape: (n_seq, 2)
+
+    # 6. Compute Euclidean distance to target
+    target = np.asarray(target)
+    if target.ndim == 1:
+        target = target.reshape(1, 2)
+
+    # If multiple targets, compute min distance to any
+    dists = np.linalg.norm(projected[:, None, :] - target[None, :, :], axis=2)
+    return dists.min(axis=1) if target.shape[0] > 1 else dists.flatten()
+
+
+
 ############### PCA function #################################
 
 def plot_projected_pca_mult(
