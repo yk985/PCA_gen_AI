@@ -50,7 +50,7 @@ def generate_gill_n_save(save_dir, save_name, J, N_seqs=10000, init_sequence=Non
     
     # Save the sequences in numerical format as a .npy file
     np.save(f"{save_dir}/{save_name}.npy", gen_sequences)
-    np.save(f"{save_dir}/{save_name}_time_seq.npy", time_seq)
+    #np.save(f"{save_dir}/{save_name}_time_seq.npy", time_seq)
     # Save the sequences in letter format as a .txt file (each sequence on a new line)
     with open(f"{save_dir}/{save_name}.txt", "w") as f:
         for sequence in gen_sequences_letters:

@@ -139,6 +139,15 @@ def add_coords_flat(seqs, N, max_pot=21, plot=False, highlight_index=None):
 
     return seqs_pca_flat
 
+def extract_sequences_around_PCA(seq,target,N,dist):
+    seq_PCA=add_PCA_coords(seq,N)
+    print(seq_PCA.shape)
+    PCA_list=seq_PCA[:,-2:]
+    list_dist=np.sqrt(np.sum((PCA_list-target)**2,axis=1))
+    print(list_dist.shape)
+    index_list=list_dist<dist
+    return seq[index_list,:]
+
 def open_fasta(filename):
     if filename.endswith('.gz'):
         return gzip.open(filename, 'rt')

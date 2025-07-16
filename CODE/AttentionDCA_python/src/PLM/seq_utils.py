@@ -1,6 +1,8 @@
 import numpy as np
 import torch
 import random
+import re
+from pathlib import Path
 
 
 
@@ -130,5 +132,18 @@ def nums_to_letters(sequence,nb_PCA_comp=0):
     num_to_letter = {v: k for k, v in letter_to_num.items()}
     return ''.join([num_to_letter.get(num, 'X') for num in sequence[:len(sequence)-nb_PCA_comp]])
 
+###############################################################
+
+def extract_beta_beta_PCA(filename):
+    stem = Path(filename).stem      # -> 'gill_gen_seqs_randinit_Ns8000_b_1_b_PCA12_PCA_comp_24_20PCA_comp'
+
+    # capture the digits after  b_   and after  b_PCA
+    m = re.search(r"b_(\d+)_b_PCA(\d+)", stem)
+    if m:
+        after_b      = int(m.group(1))   # 1
+        after_b_PCA  = int(m.group(2))   # 12
+        return after_b, after_b_PCA
+    else:
+        raise ValueError("Expected pattern not found")
 
 

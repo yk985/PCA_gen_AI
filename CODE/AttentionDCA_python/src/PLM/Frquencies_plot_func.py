@@ -34,12 +34,16 @@ def compute_position_frequencies(sequence_array, n_amino_acids=None):
 
     return freq_matrix
 
-def plot_frequencies_aa_pos(gen_seq,ref_seq,save_path=None,filename=None,beta=None):
+def plot_frequencies_aa_pos(gen_seq,ref_seq,save_path=None,filename=None,beta=None,beta_PCA=None):
     freq_mat_gen=compute_position_frequencies(gen_seq)
     freq_mat_data_train=compute_position_frequencies(ref_seq)
     freq_mat_gen=np.reshape(freq_mat_gen,-1)
     freq_mat_data_train=np.reshape(freq_mat_data_train,-1)
-    plt.scatter(freq_mat_data_train,freq_mat_gen,label=fr'$\beta={beta}$')
+    if not beta_PCA is None:
+        plt.scatter(freq_mat_data_train,freq_mat_gen,label=fr'$\beta={beta},\beta_P={beta_PCA}$')
+    else:
+        plt.scatter(freq_mat_data_train,freq_mat_gen,label=fr'$\beta={beta}$')
+
     plt.plot([0,1],[0,1], color='gray', linestyle='--')
     plt.xlabel("Reference Amino Acid Frequency")
     plt.ylabel("Generated Amino Acid Frequency")
