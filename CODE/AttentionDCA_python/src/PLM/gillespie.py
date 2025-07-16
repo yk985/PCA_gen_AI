@@ -16,6 +16,8 @@ class SequenceGill:
                 print("Mismatch of PCA tensor and nb PCA components indicated")
         if J_tens_PCA is None:
             self.L = J.shape[-1] - nb_PCA_comp  # Length of the sequence without PCA components
+        else:
+            self.L = J.shape[-1]
         self.beta = beta
         self.beta_PCA=beta_PCA
         self.mat_energy=None

@@ -236,7 +236,7 @@ def plot_projected_pca_time(sequences_reference, sequences_to_project,
                     label = f'Target ({int(gx)},{int(gy)})' if i == 0 else None
                     plt.scatter(tx, ty, color='red', s=80, edgecolors='black', label=label)
 
-    plt.title(title)
+    #plt.title(title)
     plt.xlabel("PC1")
     plt.ylabel("PC2")
     plt.grid(False)
