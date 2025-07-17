@@ -24,51 +24,55 @@ matplotlib.rc('font', **font)
 
 
 ############### PCA distances #################################
-def distance_to_target(sequences, target, reference_sequences, max_pot=21):
+def distance_to_target_bin(sequences, target_bin, reference_sequences, Nbins=35, max_pot=21):
     """
-    Compute Euclidean distance of each sequence to a target point in PCA space.
+    Compute Euclidean distance from sequences to a target bin in PCA space.
 
     Args:
         sequences: list of sequences (str or int-list)
-        target: target PCA coordinates (shape: [2] or [n_targets, 2])
-        reference_sequences: list of reference sequences for PCA fitting
-        max_pot: number of amino acid types (default 21)
+        target_bin: tuple (gx, gy) — target bin coordinates
+        reference_sequences: list of reference sequences for PCA
+        Nbins: number of PCA bins per axis
+        max_pot: number of possible amino acids (default 21)
 
     Returns:
-        distances: np.array of shape (n_sequences,) with distances to target
+        distances: np.array of shape (n_sequences,) — distances to target PCA point
     """
-    # 1. Convert to numeric if needed
+    # Convert to numeric if needed
     if isinstance(sequences[0], str):
         sequences = [letters_to_nums(seq) for seq in sequences]
     if isinstance(reference_sequences[0], str):
         reference_sequences = [letters_to_nums(seq) for seq in reference_sequences]
 
-    # 2. One-hot encode
+    # One-hot encode
     one_hot_seqs = one_hot_seq_batch(sequences, max_pot=max_pot)
     one_hot_ref = one_hot_seq_batch(reference_sequences, max_pot=max_pot)
 
-    # 3. Flatten
-    seqs_flat = one_hot_seqs.reshape(one_hot_seqs.shape[0], -1)
-    ref_flat = one_hot_ref.reshape(one_hot_ref.shape[0], -1)
-
-    # 4. Scale using reference stats
+    # Flatten and scale
+    flat_seqs = one_hot_seqs.reshape(one_hot_seqs.shape[0], -1)
+    flat_ref = one_hot_ref.reshape(one_hot_ref.shape[0], -1)
     scaler = StandardScaler()
-    ref_scaled = scaler.fit_transform(ref_flat)
-    seqs_scaled = scaler.transform(seqs_flat)
+    ref_scaled = scaler.fit_transform(flat_ref)
+    seqs_scaled = scaler.transform(flat_seqs)
 
-    # 5. Fit PCA on reference, transform sequences
+    # PCA
     pca = PCA(n_components=2)
-    pca.fit(ref_scaled)
-    projected = pca.transform(seqs_scaled)  # shape: (n_seq, 2)
+    ref_pca = pca.fit_transform(ref_scaled)
+    seqs_pca = pca.transform(seqs_scaled)
 
-    # 6. Compute Euclidean distance to target
-    target = np.asarray(target)
-    if target.ndim == 1:
-        target = target.reshape(1, 2)
+    # Compute PCA bounds
+    x_min, x_max = ref_pca[:, 0].min(), ref_pca[:, 0].max()
+    y_min, y_max = ref_pca[:, 1].min(), ref_pca[:, 1].max()
 
-    # If multiple targets, compute min distance to any
-    dists = np.linalg.norm(projected[:, None, :] - target[None, :, :], axis=2)
-    return dists.min(axis=1) if target.shape[0] > 1 else dists.flatten()
+    # Convert bin to PCA coords
+    gx, gy = target_bin
+    x_pca = x_min + (gx + 0.5) * (x_max - x_min) / Nbins
+    y_pca = y_min + (gy + 0.5) * (y_max - y_min) / Nbins
+    target_pca = np.array([x_pca, y_pca])
+
+    # Compute Euclidean distances
+    distances = np.linalg.norm(seqs_pca - target_pca, axis=1)
+    return np.mean(distances)
 
 
 
