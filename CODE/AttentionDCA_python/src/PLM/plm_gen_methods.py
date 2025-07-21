@@ -73,12 +73,13 @@ def generate_PCA_coords(init_sequence, N_iter, J_PCA, nb_PCA_comp=2, beta_PCA=1,
     #if J_PCA is None:
     #    return np.zeros(nb_PCA_comp)
     PCA_coords = []
-    seq = SequencePLM(J, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=PCA_comp_list,J_tens_PCA=J_PCA,beta_PCA=beta_PCA)
-    for _ in tqdm(range(N_iter)):
-        print(f"Iteration {_+1}/{N_iter}")
+    seq = SequencePLM(J=J, initial_sequence=init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=PCA_comp_list,J_tens_PCA=J_PCA,beta_PCA=beta_PCA)
+    for i in range(N_iter):
         PCA_coord = seq.update_PCA_coords(model=model)
         PCA_coords.append(PCA_coord)
-        print(f"Generated PCA coordinate: {PCA_coord}")
+        if i % 100 == 0:
+            print(f"Iteration {i+1}/{N_iter}")
+            print(f"Generated PCA coordinate: {PCA_coord}")
     return PCA_coords
     
 def generate_coords_n_save(save_dir, save_name, J, N_iter=100, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([]),J_PCA=None,beta_PCA=1, model=1):

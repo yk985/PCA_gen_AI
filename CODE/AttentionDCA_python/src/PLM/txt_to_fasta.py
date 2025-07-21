@@ -14,8 +14,10 @@ seq_dir = 'gill_generated_sequences'
 #filename = 'gill_gen_seqs_w_init_seq_Ns30000_r0.3_after_mod'
 filename = 'gill_generated_sequences_randinit_20000'
 
-seq_dir = 'generated_sequences_brute_forcePCA_comp'
+seq_dir = 'generated_sequences_brute_force_specificPCA_comp'
 filename = 'gen_seqs_randinit_Ns15000_b_1_b_PCA10_PCA_comp_24_20PCA_comp'
+filename = 'gen_seqs_randinit_Ns15000_b_1_b_PCA10_PCA_comp_8_8PCA_comp'
+filename = 'gen_seqs_randinit_Ns15000_b_1_b_PCA10_PCA_comp_27_5PCA_comp'
 
 output_file = f'{seq_dir}/{filename}.npy'
 gill_gen_seqs = np.load(output_file)
@@ -38,8 +40,8 @@ with open(txt_file, 'r') as infile:
 if len(sequences) <= 5000:
     raise ValueError("Not enough sequences to start at index 5000!")
 # Check size of a sequence
-if len(sequences[0]) != 63:
-    raise ValueError("Sequences are not of length 63, please check the input file.")
+#if len(sequences[0]) != 63:
+#    raise ValueError("Sequences are not of length 63, please check the input file.")
 
 # Select sequences starting from index 5000
 selected_sequences = sequences[5000:]

@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from CODE.AttentionDCA_python.src.dcascore import compute_referencescore, correct_APC, compute_residue_pair_dist, compute_PPV_from_map
-from CODE.AttentionDCA_python.src.model import AttentionModel
+from dcascore import compute_referencescore, correct_APC, compute_residue_pair_dist, compute_PPV_from_map
+from model import AttentionModel
 plt.rc('font',size=12)
 
 def attention_heads(Q, K, V, sym=False, head_mask=0, H1 = 0, H2 = 0):

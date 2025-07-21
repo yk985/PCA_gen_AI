@@ -126,7 +126,7 @@ class SequencePLM:
         energies_2D = self.compute_coord_energy(model)
 
         # Numerically stable softmax
-        shifted_energies = -self.beta_PCA * energies_2D
+        shifted_energies = -self.beta_PCA * energies_2D #(energy should be -)
         #shifted_energies -= shifted_energies.max()
 
         probs_2D = np.exp(shifted_energies)
@@ -197,7 +197,7 @@ class SequencePLM:
                         pca_aa1 = j
                         energy += self.J[aa, pca_aa1, pos, 1]
             # Scale by beta_PCA (if used only for PCA couplings)
-                        energies_2D[i, j] = self.beta_PCA * energy
+                    energies_2D[i, j] = self.beta_PCA * energy
 
         elif model == 2:
         # Compute energy for each (i,j) PCA coordinate pair
@@ -207,7 +207,7 @@ class SequencePLM:
                     for pos in range(L):
                         aa = self.sequence[pos]
                         energy += self.beta_PCA * (self.J_PCA[aa, i, pos, 0] + self.J_PCA[aa, j, pos, 1])
-                        energies_2D[i, j] = energy  # Store energy for visualization
+                    energies_2D[i, j] = energy  # Store energy for visualization
 
         elif model == 3:
             for i in range(Nbins):
@@ -215,9 +215,9 @@ class SequencePLM:
                 for pos in range(L):
                     aa = self.sequence[pos]
                     energy += self.beta_PCA * (self.J_PCA[aa, i, pos])
-                energies_flat[i] = energy
+                energies_flat[i] = energy.item()
             energies_2D = energies_flat.reshape((Nbins, Nbins))
-        return energies_2D
+        return -energies_2D
 
     def seq_energy(self):
         sum=0

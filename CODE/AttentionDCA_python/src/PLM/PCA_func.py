@@ -87,7 +87,8 @@ def plot_projected_pca_mult(
     save_path=None,
     restrict_axes=True,
     Nbins=None,
-    point_alpha=0.5
+    point_alpha=0.5,
+    colors = None
 ):
     import matplotlib.pyplot as plt
     from sklearn.decomposition import PCA
@@ -127,7 +128,10 @@ def plot_projected_pca_mult(
         proj_scaled = scaler.transform(proj_flat)
         proj_pca = pca.transform(proj_scaled)
 
-        color = cmap(idx)
+        if colors is not None and idx < len(colors):
+            color = colors[idx]
+        else:
+            color = cmap(idx)
         label = "Generated"
         # Only add label for the first group to avoid legend duplicates
         if label in labels_used:
