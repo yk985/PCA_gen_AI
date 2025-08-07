@@ -215,6 +215,7 @@ class SequencePLM:
                         pca_aa1 = j
                         if pos != L+1:
                             energy += self.J[aa, pca_aa1, pos, -1]
+
             # Scale by beta_PCA (if used only for PCA couplings)
                     energies_2D[i, j] = self.beta_PCA * energy
 
