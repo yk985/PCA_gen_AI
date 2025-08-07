@@ -184,18 +184,37 @@ class SequencePLM:
         energies_2D = np.zeros((Nbins, Nbins))
         energies_flat = np.zeros((Nbins*Nbins))
         if model == 1:
+            # for i in range(Nbins):  # PCA comp 0
+            #     for j in range(Nbins):  # PCA comp 1
+            #         energy = 0.0
+            #         for pos in range(L):  # real amino acid sites
+            #             aa = self.sequence[pos]  # actual residue index (0–20)
+            #             # Interact with PCA comp 0 (stored at position L)
+            #             pca_aa0 = i  # interpreted as "amino acid index" at pos = L
+            #             energy += self.J_PCA[aa, pca_aa0, pos, 0]
+
+            #             # Interact with PCA comp 1 (stored at position L+1)
+            #             pca_aa1 = j
+            #             energy += self.J_PCA[aa, pca_aa1, pos, 1]
+            # # Scale by beta_PCA (if used only for PCA couplings)
+            #         energies_2D[i, j] = self.beta_PCA * energy
+            ##Comment j'aurais fait
             for i in range(Nbins):  # PCA comp 0
                 for j in range(Nbins):  # PCA comp 1
                     energy = 0.0
-                    for pos in range(L):  # real amino acid sites
+                    self.sequence[-2]=i
+                    self.sequence[-1]=j
+                    for pos in range(L+self.nb_PCA_comp):  # real amino acid sites
                         aa = self.sequence[pos]  # actual residue index (0–20)
                         # Interact with PCA comp 0 (stored at position L)
                         pca_aa0 = i  # interpreted as "amino acid index" at pos = L
-                        energy += self.J[aa, pca_aa0, pos, 0]
+                        if pos!=L :
+                            energy += self.J[aa, pca_aa0, pos, -2]
 
                         # Interact with PCA comp 1 (stored at position L+1)
                         pca_aa1 = j
-                        energy += self.J[aa, pca_aa1, pos, 1]
+                        if pos != L+1:
+                            energy += self.J[aa, pca_aa1, pos, -1]
             # Scale by beta_PCA (if used only for PCA couplings)
                     energies_2D[i, j] = self.beta_PCA * energy
 
