@@ -244,3 +244,110 @@ class SequencePLM:
             for j in range(self.L):
                 sum+=self.J[self.sequence[i], self.sequence[j],i,j]
         return sum
+    
+
+
+
+class BatchSequencePLM:
+    def __init__(self, J, N, beta=1, nb_PCA_comp=0, PCA_component_list=None, J_tens_PCA=None, beta_PCA=1):
+        """
+        Initialize with a batch of N independent sequences.
+        """
+        self.J = J
+        self.J_PCA = J_tens_PCA
+        self.beta = beta
+        self.beta_PCA = beta_PCA
+        self.nb_PCA_comp = nb_PCA_comp
+        self.N = N
+
+        if self.J_PCA is not None:
+            self.L = J.shape[-1] - nb_PCA_comp
+        else:
+            self.L = J.shape[-1] - nb_PCA_comp
+
+        # Initialize N random sequences
+        core_sequences = np.random.randint(0, 21, size=(N, self.L))
+
+        if nb_PCA_comp > 0:
+            if PCA_component_list is None:
+                raise ValueError("PCA_component_list must be provided for PCA components.")
+            if len(PCA_component_list) != nb_PCA_comp:
+                raise ValueError("Mismatch between number of PCA components and list provided.")
+            pca_array = np.tile(PCA_component_list, (N, 1))  # replicate for each sequence
+            self.sequences = np.concatenate((core_sequences, pca_array), axis=1)
+        else:
+            self.sequences = core_sequences  # shape: (N, L [+ nb_PCA])
+
+    def plm_calc_batch(self, site, trial_aa):
+        """
+        Compute unnormalized pseudo-likelihood for all N sequences at one site and one trial AA.
+        Return: (N,) array
+        """
+        aa_j_all = self.sequences[:, :self.L]  # shape (N, L)
+        aa_trial = np.full(self.N, trial_aa)
+
+        energy = np.zeros(self.N)
+
+        for j in range(self.L):
+            if j == site:
+                continue
+            aa_j = aa_j_all[:, j]  # shape (N,)
+            energy += self.beta * np.asarray(self.J[trial_aa, aa_j, site, j])  # vectorized lookup
+
+        # If PCA is used
+        if self.nb_PCA_comp > 0:
+            for i in range(self.nb_PCA_comp):
+                PCA_coord = self.sequences[:, self.L + i]
+                if self.J_PCA is not None:
+                    energy += self.beta_PCA * np.asarray(self.J_PCA[trial_aa, PCA_coord, site, i])
+                else:
+                    energy += self.beta_PCA * np.asarray(self.J[trial_aa, PCA_coord, site, self.L + i])
+        
+        return energy
+
+    def plm_site_distribution_batch(self, site):
+        """
+        Compute PLM probabilities for each AA (0..20) for all N sequences at site.
+        Returns: (N, 21) array of probabilities
+        """
+        raw_scores = np.zeros((self.N, 21))
+        for aa in range(21):
+            raw_scores[:, aa] = self.plm_calc_batch(site, aa)
+
+        raw_scores -= raw_scores.max(axis=1, keepdims=True)  # stability
+        probs = np.exp(raw_scores)
+        probs /= probs.sum(axis=1, keepdims=True)  # normalize
+        return probs  # shape: (N, 21)
+
+    def draw_aa_batch(self, site):
+        """
+        Sample new AAs for all N sequences at a given site.
+        """
+        probs = self.plm_site_distribution_batch(site)  # (N, 21)
+        new_aas = np.array([np.random.choice(21, p=p) for p in probs])  # (N,)
+        self.sequences[:, site] = new_aas
+
+    def evolve_all(self, n_iter=500):
+        """
+        Perform Gibbs sampling over all sequences for n_iter iterations.
+        """
+        for _ in tqdm(range(n_iter)):
+            site=np.random.choice(self.L)
+            self.draw_aa_batch(site)
+
+    def get_sequences(self):
+        """
+        Return all N sequences.
+        """
+        return self.sequences
+
+    def to_letters(self):
+        """
+        Return N sequences in letter format.
+        """
+        num_to_letter = {v: k for k, v in letter_to_num.items()}
+        letter_seqs = []
+        for seq in self.sequences[:, :self.L]:
+            letter_seq = ''.join([num_to_letter[i] for i in seq])
+            letter_seqs.append(letter_seq)
+        return letter_seqs
