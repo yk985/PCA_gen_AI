@@ -1,3 +1,4 @@
+import site
 from tqdm import tqdm
 import numpy as np
 
@@ -68,13 +69,24 @@ class SequencePLM:
         site: int from 0 to L-1
         trial_aa: int from 0 to 21 (amino acid index)
         """
+        if site < 0 or site >= self.L:
+            raise ValueError(f"Site {site} is out of bounds for sequence length {self.L}.")
         sum_energy = 0.0
         if not ( self.J_PCA is None):
             #for i in range(self.nb_PCA_comp):
             #    sum_energy+= self.J_PCA[trial_aa,self.sequence[i],site,i]
-            for i in range(self.nb_PCA_comp):
-                PCA_coord = self.sequence[self.L + i]  # the PCA coordinate at component i
-                sum_energy += self.beta_PCA*self.J_PCA[trial_aa, PCA_coord, site, i]
+            # PREBIOUS
+            #for i in range(self.nb_PCA_comp):
+            #    PCA_coord = self.sequence[self.L + i]  # the PCA coordinate at component i
+            #    sum_energy += self.beta_PCA*self.J_PCA[trial_aa, PCA_coord, site, i]
+            # NEW
+            if self.nb_PCA_comp == 1:       # Model 3: single joint PCA bin index
+                joint_bin = self.sequence[self.L]  # Already 0..1224 in sequence
+                sum_energy += self.beta_PCA * self.J_PCA[trial_aa, joint_bin, site, 0]
+            else:                           # Model 2: separate PCA coordinates
+                for i in range(self.nb_PCA_comp):
+                    PCA_coord = self.sequence[self.L + i]  # 0..34 for each coordinate
+                    sum_energy += self.beta_PCA * self.J_PCA[trial_aa, PCA_coord, site, i]
         else:
             for i in range(self.nb_PCA_comp):
                 sum_energy+=self.beta_PCA*self.J[trial_aa,self.sequence[self.L+i],site,self.L+i]
@@ -126,43 +138,19 @@ class SequencePLM:
         energies_2D = self.compute_coord_energy(model)
 
         # Numerically stable softmax
-        shifted_energies = -self.beta_PCA * energies_2D #(energy should be -)
+        shifted_energies = self.beta_PCA * energies_2D #(energy should be -)
         #shifted_energies -= shifted_energies.max()
 
-        probs_2D = np.exp(shifted_energies)
-        probs_2D /= probs_2D.sum()
+        shifted_energies -= shifted_energies.max()  # subtract max for numerical stability
 
+        probs_2D = np.exp(-shifted_energies)
         total = probs_2D.sum()
 
+        # Check for numerical issues
         if total == 0 or np.isnan(total) or np.isinf(total):
-            probs_2D = np.ones((Nbins, Nbins)) / (Nbins * Nbins)
+            probs_2D = np.ones_like(probs_2D) / probs_2D.size  # uniform distribution
         else:
             probs_2D /= total
-
-        if plot==True:
-            import matplotlib.pyplot as plt
-            # Plot Energy Landscape
-            plt.figure(figsize=(7, 6))
-            plt.imshow(energies_2D, origin='lower', cmap='coolwarm')
-            plt.colorbar(label='Energy')
-            plt.title("Energy Landscape (Lower = Preferred)")
-            plt.xlabel("PCA Component 1 (X-axis)")
-            plt.ylabel("PCA Component 0 (Y-axis)")
-            plt.xticks(np.arange(Nbins))
-            plt.yticks(np.arange(Nbins))
-            plt.tight_layout()
-            plt.show()
-            # Visualize probability surface
-            plt.figure(figsize=(7, 6))
-            plt.imshow(probs_2D, origin='lower', cmap='viridis')
-            plt.colorbar(label='Probability')
-            plt.title("Joint PCA Coordinate Probability Distribution")
-            plt.xlabel("PCA Component 1 (X-axis)")
-            plt.ylabel("PCA Component 0 (Y-axis)")
-            plt.xticks(np.arange(Nbins))
-            plt.yticks(np.arange(Nbins))
-            plt.tight_layout()
-            plt.show()
 
         # Sample from joint distribution
         flat_probs = probs_2D.flatten()
@@ -237,7 +225,8 @@ class SequencePLM:
                     energy += self.beta_PCA * (self.J_PCA[aa, i, pos])
                 energies_flat[i] = energy.item()
             energies_2D = energies_flat.reshape((Nbins, Nbins))
-        return -energies_2D
+        energies_2D = -energies_2D  # Negate to match Boltzmann distribution (lower energy = higher probability)
+        return energies_2D
 
     def seq_energy(self):
         sum=0

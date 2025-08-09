@@ -229,7 +229,6 @@ def plot_projected_pca_time(sequences_reference, sequences_to_project,
             y = y_min + i * (y_max - y_min) / Nbins
             plt.axvline(x, color='lightgray', linewidth=0.5)
             plt.axhline(y, color='lightgray', linewidth=0.5)
-
         # Draw target points if provided
         if target_coords is not None:
             if isinstance(target_coords, np.ndarray) and target_coords.ndim == 1 and len(target_coords) == 2:

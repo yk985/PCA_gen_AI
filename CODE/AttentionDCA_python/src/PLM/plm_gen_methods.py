@@ -57,8 +57,8 @@ def generate_plm_n_save(save_dir, save_name, J, N_seqs=10000, init_sequence=None
     if nb_PCA_comp!=0:
         save_dir=save_dir+"PCA_comp"
         save_name=save_name+"PCA_comp"
-        for i in gen_sequences[0,len(gen_sequences)-nb_PCA_comp:]:
-            save_dir+=str(i)+"_"  
+        #for i in gen_sequences[0,len(gen_sequences)-nb_PCA_comp:]:
+        #    save_dir+=str(i)+"_"  
     # Check if the directory exists, create it if not
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)

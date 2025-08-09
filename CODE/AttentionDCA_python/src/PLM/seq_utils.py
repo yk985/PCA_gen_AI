@@ -147,3 +147,12 @@ def extract_beta_beta_PCA(filename):
         raise ValueError("Expected pattern not found")
 
 
+#####
+def find_target_seq(target_coord, sequences,L=63):
+    for seq in sequences:
+        coord = seq[L:]
+        coord = np.array(coord)
+        if (coord[0] == target_coord[0]) and (coord[1] == target_coord[1]):
+            print(coord)
+            return seq
+    return 0
