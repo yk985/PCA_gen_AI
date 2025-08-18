@@ -341,3 +341,110 @@ class BatchSequencePLM:
             letter_seq = ''.join([num_to_letter[i] for i in seq])
             letter_seqs.append(letter_seq)
         return letter_seqs
+    
+
+
+def flatten(coords, nb_bins_PCA):
+    x_idx, y_idx = coords
+    return x_idx * nb_bins_PCA + y_idx
+
+
+class SequenceCondPLM:
+    def __init__(self, J, G, initial_sequence = None, beta = 1, nb_PCA_comp=0,PCA_component_list=np.array([]),beta_PCA=1):
+        """
+        Initialize the SequencePLM object with a coupling tensor J of the family and an optional initial sequence.
+        """
+        self.J = J # shape (q,q,L,L)
+        self.G = G # shape (L,q,Nbins*Nbins)
+        #self.L = J.shape[-1]
+        self.beta = beta
+        self.beta_PCA=beta_PCA
+        self.nb_PCA_comp=nb_PCA_comp
+        self.L = J.shape[-1]
+        self.Nbins = np.pow(G.shape[-1], 1/nb_PCA_comp).astype(int) if nb_PCA_comp > 0 else 1  # Number of bins for PCA components
+        if initial_sequence is None:
+            np.random.seed(42)
+            self.sequence = np.random.choice(np.arange(21), self.L) # Sequence of ints (1 to 21) 
+            if len(PCA_component_list)==nb_PCA_comp:
+                self.sequence = np.concatenate((self.sequence,PCA_component_list))
+            else:
+                print("number of PCA components doesn't match size of PCA list")
+            #if len(PCA_component_list) == nb_PCA_comp:
+            #    if nb_PCA_comp == 1:
+            #        print('here')
+            #    # Expecting 2D coordinates (x, y), flatten into 1D bin index
+            #        first_comp = PCA_component_list[0]
+            #        if isinstance(first_comp, (tuple, list, np.ndarray)) and len(first_comp) == 2:
+            #            x, y = first_comp
+            #            flat_coord = x * self.nb_bins_PCA + y  # flatten 2D coords
+            #            self.sequence = np.concatenate((self.sequence, [flat_coord]))
+            #        else:
+            #        # Already flattened or just one value
+            #            self.sequence = np.concatenate((self.sequence, [first_comp]))
+            #    else:
+            #    # nb_PCA_comp > 1: assume already in flattened or separate components
+            #        self.sequence = np.concatenate((self.sequence, PCA_component_list))
+            #else:
+            #    raise ValueError("Number of PCA components doesn't match PCA_component_list")
+        else:
+            self.sequence = initial_sequence
+        self.PCA_coord = np.array(PCA_component_list) if PCA_component_list.size > 0 else np.zeros(nb_PCA_comp)
+
+    def to_letter(self):
+        """
+        Show sequence as letters
+        """
+        print("Sequence:", self.sequence)
+        num_to_letter = {v: k for k, v in letter_to_num.items()}
+        letter_seq = ''.join([num_to_letter[i] for i in self.sequence[:len(self.sequence)-self.nb_PCA_comp]])
+        print(letter_seq)
+        return letter_seq
+
+    def modify_PCA_target(self,new_PCA_comp):
+        n=len(new_PCA_comp)
+        if n==self.nb_PCA_comp:
+            self.sequence[-self.nb_PCA_comp:]=new_PCA_comp.copy()
+
+    def plm_calc(self, site, trial_aa):
+        """
+        Compute unnormalized pseudo-likelihood of trial_aa at a given site.
+        site: int from 0 to L-1
+        trial_aa: int from 0 to 21 (amino acid index)
+        """
+        if site < 0 or site >= self.L:
+            raise ValueError(f"Site {site} is out of bounds for sequence length {self.L}.")
+        sum_energy = 0.0
+        for j in range(self.L):
+            if j == site:
+                continue
+            aa_j = self.sequence[j]
+            sum_energy += self.beta * self.J[trial_aa, aa_j, site, j] # check indexing
+            #sum_energy += self.J[aa_j, trial_aa, j, site] 
+        if self.nb_PCA_comp > 0:
+            flat_coord = flatten(self.PCA_coord, self.Nbins).astype(int)  # Flatten PCA coordinates to a single index
+            if flat_coord < 0 or flat_coord >= self.G.shape[-1]:
+                raise ValueError(f"Flat coordinate {flat_coord} is out of bounds for G tensor with shape {self.G.shape}.")
+            sum_energy += self.beta_PCA * self.G[site, trial_aa, flat_coord]  # Add contribution from G tensor
+        prob = sum_energy
+        return prob
+
+    
+    def plm_site_distribution(self, site):
+        """
+        Compute probability distriution for specific site (normalized)
+        """
+        probs = []
+        for trial_aa in range(21):
+            probs.append(self.plm_calc(site, trial_aa))
+        probs = np.array(probs)
+        probs = np.exp(probs-probs.max()) #to avoid overflow for high beta
+        probs /= probs.sum()
+        return probs
+    
+    def draw_aa(self, site):
+        """
+        Sample a new AA at the given site from PLM distribution
+        """
+        probs = self.plm_site_distribution(site)
+        new_aa = np.random.choice(21, p=probs) # aa from 0 to 20
+        self.sequence[site] = new_aa

@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import random
 import re
+import os
 from pathlib import Path
 
 
@@ -132,6 +133,14 @@ def nums_to_letters(sequence,nb_PCA_comp=0):
     num_to_letter = {v: k for k, v in letter_to_num.items()}
     return ''.join([num_to_letter.get(num, 'X') for num in sequence[:len(sequence)-nb_PCA_comp]])
 
+
+def flatten(coords, nb_bins_PCA=35):
+    """
+    Flatten 2D coordinates into a single index (row-major order).
+    """
+    x, y = coords
+    return y * nb_bins_PCA + x 
+
 ###############################################################
 
 def extract_beta_beta_PCA(filename):
@@ -156,3 +165,69 @@ def find_target_seq(target_coord, sequences,L=63):
             print(coord)
             return seq
     return 0
+
+
+def find_all_seqs_with_coord(target_coord, sequences, L=63):
+    matches = []
+    for seq in sequences:
+        coord = np.array(seq[L:])
+        
+        if coord.size != 2:
+            raise ValueError(f"Expected 2 PCA coords, got shape {coord.shape} with data {coord}")
+        
+        if (coord[0] == target_coord[0]) and (coord[1] == target_coord[1]):
+            matches.append(seq)
+    return matches
+
+def find_all_seqs_with_coord(target_coord, sequences, L=63, nb_bins_PCA=35):
+    matches = []
+    print(f"Target coord: {target_coord}")
+    print("Target coord size:", target_coord.size)
+    if target_coord.size == 2:
+        nb_PCA_comp =2
+    if target_coord.size == 1:
+        nb_PCA_comp = 1
+    for seq in sequences:
+        coord = np.array(seq[-nb_PCA_comp:])
+        # append seq if coord matches target_coord
+        if coord.size != nb_PCA_comp:
+            raise ValueError(f"Expected {nb_PCA_comp} PCA coords, got shape {coord.shape} with data {coord}")
+        if nb_PCA_comp == 2:
+            if (coord[0] == target_coord[0]) and (coord[1] == target_coord[1]):
+                matches.append(seq)
+        elif nb_PCA_comp == 1:
+            if coord== target_coord:
+                matches.append(seq)
+    print(f"Found {len(matches)} sequences matching target coordinates {target_coord}")
+    return matches
+
+#####
+#--------------- FUNCTIONS TO LOAD SEQUENCES ----------------
+
+def load_train_seqs(mac=True):
+    family = 'jdoms_bacteria_train2'
+    wd = '/Users/marzioformica/Desktop/EPFL/Master/StageLBS/PCA_gen_AI'
+    file_test_data = wd + f'/CODE/DataAttentionDCA/jdoms/{family}.fasta'
+    #filename = cwd + f'\CODE\DataAttentionDCA\jdoms\{family}.fasta'
+    if not mac:
+        file_test_data = r"C:\Users\youss\OneDrive\Bureau\master epfl\MA2\TP4 De los Rios\git_test\PLM-gen-DCA\Attention-DCA-main\CODE\DataAttentionDCA\jdoms\jdoms_bacteria_train2.fasta"
+    train_sequences = sequences_from_fasta(file_test_data)
+    train_sequences_num = [letters_to_nums(seq) for seq in train_sequences]
+    print(f"Loaded {len(train_sequences)} training sequences from {file_test_data}")
+    return train_sequences
+
+def load_gen_seqs(file_dir, file_name, L=63, mac=True):
+    cwd = os.getcwd()
+    file_path = os.path.join(file_dir, file_name)
+    output_file = os.path.join(cwd, file_dir, f"{file_name}.npy")
+    gen_sequences = np.load(output_file)
+    saved_seq = gen_sequences.copy()
+    # remove PCA coords columns if they exist
+    a=gen_sequences.shape[1]
+    if gen_sequences.shape[1] > L:
+        gen_sequences = gen_sequences[:, :-(a-L)]  # Assuming the last two columns are PCA coordinates
+    print(f"Loaded {gen_sequences.shape[0]} generated sequences from {file_path}")
+    print(f"Shape of loaded sequences: {gen_sequences.shape}")
+    return gen_sequences
+
+

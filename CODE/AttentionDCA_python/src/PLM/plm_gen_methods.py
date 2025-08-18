@@ -1,4 +1,4 @@
-from plm_model import SequencePLM, BatchSequencePLM
+from plm_model import SequencePLM, BatchSequencePLM, SequenceCondPLM
 from seq_utils import nums_to_letters
 
 import os
@@ -11,6 +11,19 @@ def generate_plm(J,N_seqs=40000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_com
     """
     gen_sequences = []
     seq = SequencePLM(J, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=PCA_comp_list,J_tens_PCA=J_PCA,beta_PCA=beta_PCA)
+    for _ in tqdm(range(N_seqs)):
+        site = np.random.randint(seq.L) # Random site from 0 to L-1
+        seq.draw_aa(site)
+        gen_sequences.append(seq.sequence.copy())
+    gen_sequences = np.array(gen_sequences)
+    return gen_sequences
+
+def generate_plm_cond(J,G,N_seqs=40000, init_sequence=None,beta=1,nb_PCA_comp=0,target=np.array([]),beta_PCA=1):
+    """
+    Generate N_seqs new sequences using PLM (random initialization by default)
+    """
+    gen_sequences = []
+    seq = SequenceCondPLM(J,G, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,PCA_component_list=target,beta_PCA=beta_PCA)
     for _ in tqdm(range(N_seqs)):
         site = np.random.randint(seq.L) # Random site from 0 to L-1
         seq.draw_aa(site)
@@ -68,6 +81,39 @@ def generate_plm_n_save(save_dir, save_name, J, N_seqs=10000, init_sequence=None
     
     # Save the sequences in letter format as a .txt file (each sequence on a new line)
     with open(f"{save_dir}/{save_name}.txt", "w") as f:
+        for sequence in gen_sequences_letters:
+            f.write(f"{sequence}\n")
+
+    print(f"Generated sequences saved to {save_dir}")
+
+def generate_plm_cond_n_save(save_dir, save_name, J, G, N_seqs=10000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([]),beta_PCA=1):
+    """
+    Generates a set of sequences using the PLM and saves them both as a numpy file and a text file containing the corresponding letter sequences.
+    Saves:
+    - A `.npy` file containing the generated sequences in numerical format.
+    - A `.txt` file containing the generated sequences in letter format.
+    """
+    gen_sequences = generate_plm_cond(J, G,N_seqs, init_sequence,beta=beta,nb_PCA_comp=nb_PCA_comp,target=PCA_comp_list,beta_PCA=beta_PCA)
+    gen_sequences_letters = [nums_to_letters(sequence,nb_PCA_comp) for sequence in gen_sequences]
+    
+    print(f"Generated sequences (letters): {gen_sequences_letters[:5]}")  # Show first 5 sequences
+    
+    gen_sequences = np.array(gen_sequences)
+    if nb_PCA_comp!=0:
+        save_dir=save_dir
+        save_name=save_name
+        #for i in gen_sequences[0,len(gen_sequences)-nb_PCA_comp:]:
+        #    save_dir+=str(i)+"_"  
+    # Check if the directory exists, create it if not
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    
+    # Save the sequences in numerical format as a .npy file
+    cwd = os.getcwd()
+    np.save(f"{cwd}/Sequences/{save_dir}/{save_name}.npy", gen_sequences)
+
+    # Save the sequences in letter format as a .txt file (each sequence on a new line)
+    with open(f"{cwd}/Sequences/{save_dir}/{save_name}.txt", "w") as f:
         for sequence in gen_sequences_letters:
             f.write(f"{sequence}\n")
 
