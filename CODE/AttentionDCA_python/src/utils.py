@@ -31,6 +31,19 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from PLM.seq_utils import one_hot_seq_batch
 
+def one_hot_grid(Z, Nbins):
+    q = int(Z.max()) + 1  # Assuming Z contains 0-based indices
+    N, M = Z.shape
+    P = get_PCA_grid_coords(get_sequences_pca_coords(Z.T, max_pot=q), N=Nbins)
+    P_one_hot = np.zeros((M, Nbins * Nbins), dtype=np.float32)
+    for i in range(M):
+        x_idx = int((P[i, 0] - P[:, 0].min()) / (P[:, 0].max() - P[:, 0].min()) * Nbins)
+        y_idx = int((P[i, 1] - P[:, 1].min()) / (P[:, 1].max() - P[:, 1].min()) * Nbins)
+        if x_idx >= Nbins: x_idx = Nbins - 1
+        if y_idx >= Nbins: y_idx = Nbins - 1
+        P_one_hot[i, x_idx * Nbins + y_idx] = 1.0
+    return P_one_hot
+
 def get_sequences_pca_coords(sequences_train, max_pot=21):
     """
     Compute 2D PCA coordinates from training sequences using one-hot + scaling.
@@ -61,7 +74,7 @@ def get_PCA_grid_coords(coords_2d, N, plot=False, highlight_index=None):
         if highlight_index is not None:
             x, y = norm_coords[highlight_index]
             gx, gy = grid_coords[highlight_index]
-            plt.scatter(x, y, color='red', s=100, label=f"Sequence {highlight_index}")
+            plt.scatter(gx, gy, color='red', s=100, label=f"Sequence {highlight_index}")
             plt.text(x + 0.01, y + 0.01, f"Grid: ({gx},{gy})", color='red', fontsize=10)
         plt.title(f"PCA Projection with {N}x{N} Grid")
         plt.xlabel("PCA 1 (normalized)")
@@ -71,7 +84,7 @@ def get_PCA_grid_coords(coords_2d, N, plot=False, highlight_index=None):
         plt.show()
     return grid_coords
 
-def add_PCA_coords(seqs, N, max_pot=21,  plot= False, highlight_index=None):
+def add_PCA_coords(seqs, Nbins, max_pot=21,  plot= False, highlight_index=None):
     """ Parameters: 
         - seqs: numpy array of training sequences (length L)
         - N: int, discretization of PCA into 2D grid NxN
@@ -81,7 +94,7 @@ def add_PCA_coords(seqs, N, max_pot=21,  plot= False, highlight_index=None):
     pca_coords = get_sequences_pca_coords(seqs, max_pot=max_pot)  # shape (num_seq, 2)
 
     # 2) Discretize PCA coords into NxN grid
-    grid_coords = get_PCA_grid_coords(pca_coords, N, plot= plot, highlight_index=highlight_index)  # shape (num_seq, 2)
+    grid_coords = get_PCA_grid_coords(pca_coords, Nbins, plot= plot, highlight_index=highlight_index)  # shape (num_seq, 2)
 
     # 3) Convert seqs to array if needed and ensure proper shape for hstack
     seqs_array = np.array(seqs)
@@ -90,6 +103,7 @@ def add_PCA_coords(seqs, N, max_pot=21,  plot= False, highlight_index=None):
 
     # 4) Stack original features + grid coordinates
     seqs_pca = np.hstack((seqs_array, grid_coords))
+    #seqs_pca = np.vstack((seqs_array, grid_coords)) # call with Z not Z.T
 
     # 5) Check shapes
     expected_cols = seqs_array.shape[1] + 2
