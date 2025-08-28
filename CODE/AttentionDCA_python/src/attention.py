@@ -384,13 +384,13 @@ def trainer_PCA_comp_brute_force(n_epochs, H=32, d=23, batch_size=1000, eta=0.00
 
     return model
 
-def trainer_PCA_comp_2_model(n_epochs, H=32, d=23, batch_size=1000, eta=0.005, lambd=0.001,
-            init_m=None, init_fun=np.random.randn,filename = None, structfile=None, verbose=True, savefile=None, losstype = 'without_J', index_last_domain1=0, H1=0, H2 =0,max_gap_frac=0.9,nb_bins_PCA=35):   
+def trainer_PCA_comp_2_model(n_epochs,Q,K,V ,H=32, d=23, batch_size=1000, eta=0.005, lambd=0.001,
+            init_m=None, init_fun=np.random.randn,filename = None, structfile=None, verbose=True, savefile=None, losstype = 'without_J', index_last_domain1=0, H1=0, H2 =0,max_gap_frac=0.9,nb_bins_PCA=35,n_comp_pca=2):   
 
     Z, W = quickread(filename,max_gap_frac=max_gap_frac)
-    Z=add_PCA_coords(Z.T,nb_bins_PCA).T
-    Z1=Z[:-2,:]
-    Z2=Z[-2:,:]
+    Z=add_PCA_coords(Z.T,nb_bins_PCA,n_comp_PCA=n_comp_pca).T
+    Z1=Z[:-n_comp_pca,:]
+    Z2=Z[-n_comp_pca:,:]
     W = W / W.sum()  # Normalize weights
     q1 = int(Z1.max()) + 1  # Assuming Z contains 0-based indices
     q2 = nb_bins_PCA # à checker avec marzio pour index 0 ou pas 
@@ -462,7 +462,7 @@ def trainer_PCA_comp_2_model(n_epochs, H=32, d=23, batch_size=1000, eta=0.005, l
                 batch_z1 = batch_z1.to(device)
                 batch_z2 = batch_z2.to(device)
                 batch_w = batch_w.to(device)
-                loss = model(batch_z1.T,batch_z2.T , batch_w)
+                loss = model(Q,K,V,batch_z1.T,batch_z2.T , batch_w)
                 val_losses.append(loss.item())
 
         avg_val_loss = sum(val_losses) / len(val_losses)
@@ -483,7 +483,7 @@ def trainer_PCA_comp_2_model(n_epochs, H=32, d=23, batch_size=1000, eta=0.005, l
             batch_w = batch_w.to(device)
             batch_w = batch_w / batch_w.sum()
             optimizer.zero_grad()
-            loss = model(batch_z1.T,batch_z2.T ,batch_w)
+            loss = model(Q,K,V,batch_z1.T,batch_z2.T ,batch_w)
             loss = loss.mean()
             torch.autograd.set_detect_anomaly(True)
             loss.backward()
@@ -504,7 +504,7 @@ def trainer_PCA_comp_2_model(n_epochs, H=32, d=23, batch_size=1000, eta=0.005, l
             batch_z1 = batch_z1.to(device)
             batch_z2 = batch_z2.to(device)
             batch_w = batch_w.to(device)
-            loss = model(batch_z1.T,batch_z2.T, batch_w)
+            loss = model(Q,K,V,batch_z1.T,batch_z2.T, batch_w)
             test_losses.append(loss.item())
 
     avg_test_loss = sum(test_losses) / len(test_losses)
@@ -643,12 +643,12 @@ def trainer_PCA_comp_2_model_test_cross(n_epochs, H=32, d=23, batch_size=1000, e
     return model
 
 def trainer_PCA_comp_2_model_once(n_epochs, H=32, d1=23,H_PCA=32,d2=23, batch_size=1000, eta=0.005, lambd=0.001,
-            init_m=None, init_fun=np.random.randn,filename = None, structfile=None, verbose=True, savefile=None, losstype = 'without_J', index_last_domain1=0, H1=0, H2 =0,max_gap_frac=0.9,nb_bins_PCA=35):   
+            init_m=None, init_fun=np.random.randn,filename = None, structfile=None, verbose=True, savefile=None, losstype = 'without_J', index_last_domain1=0, H1=0, H2 =0,max_gap_frac=0.9,nb_bins_PCA=35,n_comp_PCA=2):   
 
     Z, W = quickread(filename,max_gap_frac=max_gap_frac)
-    Z=add_PCA_coords(Z.T,nb_bins_PCA).T
-    Z1=Z[:-2,:]
-    Z2=Z[-2:,:]
+    Z=add_PCA_coords(Z.T,nb_bins_PCA,n_comp_PCA=n_comp_PCA).T
+    Z1=Z[:-n_comp_PCA,:]
+    Z2=Z[-n_comp_PCA:,:]
     W = W / W.sum()  # Normalize weights
     q1 = int(Z1.max()) + 1  # Assuming Z contains 0-based indices
     q2 = nb_bins_PCA # à checker avec marzio pour index 0 ou pas 

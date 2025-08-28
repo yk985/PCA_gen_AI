@@ -44,7 +44,7 @@ def one_hot_grid(Z, Nbins):
         P_one_hot[i, x_idx * Nbins + y_idx] = 1.0
     return P_one_hot
 
-def get_sequences_pca_coords(sequences_train, max_pot=21):
+def get_sequences_pca_coords(sequences_train, max_pot=21,n_comp_PCA=2):
     """
     Compute 2D PCA coordinates from training sequences using one-hot + scaling.
     """
@@ -52,7 +52,7 @@ def get_sequences_pca_coords(sequences_train, max_pot=21):
     train_flat = one_hot_train.reshape(one_hot_train.shape[0], -1)
     scaler = StandardScaler()
     train_scaled = scaler.fit_transform(train_flat)
-    pca = PCA(n_components=2)
+    pca = PCA(n_components=n_comp_PCA)
     train_pca = pca.fit_transform(train_scaled)
     return train_pca
 
@@ -84,6 +84,7 @@ def get_PCA_grid_coords(coords_2d, N, plot=False, highlight_index=None):
         plt.show()
     return grid_coords
 
+
 def shift_coords(grid_coords, q=21):
     """
     Apply a deterministic shift to grid coordinates by +q in both axes.
@@ -103,14 +104,14 @@ def shift_coords(grid_coords, q=21):
     return grid_coords + q
 
 
-def add_PCA_coords(seqs, Nbins, shift = False, max_pot=21,  plot= False, highlight_index=None):
+def add_PCA_coords(seqs, Nbins,shift=False, max_pot=21,  plot= False, highlight_index=None,n_comp_PCA=2):
     """ Parameters: 
         - seqs: numpy array of training sequences (length L)
         - N: int, discretization of PCA into 2D grid NxN
         Returns: 
         - seqs_PCA: numpay array of sequences with PCA coordinates added (Length: L+2)"""
     # 1) Compute 2D PCA coordinates from sequences (using your PCA function)
-    pca_coords = get_sequences_pca_coords(seqs, max_pot=max_pot)  # shape (num_seq, 2)
+    pca_coords = get_sequences_pca_coords(seqs, max_pot=max_pot,n_comp_PCA=n_comp_PCA)  # shape (num_seq, n_comp_PCA)
 
     # 2) Discretize PCA coords into NxN grid
     grid_coords = get_PCA_grid_coords(pca_coords, Nbins, plot= plot, highlight_index=highlight_index)  # shape (num_seq, 2)
@@ -126,7 +127,7 @@ def add_PCA_coords(seqs, Nbins, shift = False, max_pot=21,  plot= False, highlig
     #seqs_pca = np.vstack((seqs_array, grid_coords)) # call with Z not Z.T
 
     # 5) Check shapes
-    expected_cols = seqs_array.shape[1] + 2
+    expected_cols = seqs_array.shape[1] + n_comp_PCA
     if seqs_pca.shape[1] != expected_cols:
         raise ValueError(f"Expected shape ({seqs_array.shape[0]}, {expected_cols}), got {seqs_pca.shape}")
 
@@ -173,14 +174,18 @@ def add_coords_flat(seqs, N, max_pot=21, plot=False, highlight_index=None):
 
     return seqs_pca_flat
 
-def extract_sequences_around_PCA(seq,target,N,dist):
+def extract_sequences_around_PCA(seq,target,N,dist,W=None):
+    
     seq_PCA=add_PCA_coords(seq,N)
     print(seq_PCA.shape)
     PCA_list=seq_PCA[:,-2:]
     list_dist=np.sqrt(np.sum((PCA_list-target)**2,axis=1))
     print(list_dist.shape)
     index_list=list_dist<dist
-    return seq[index_list,:]
+    if W is None:
+        return seq[index_list,:]
+    else:
+        return seq[index_list,:], W[index_list]
 
 def open_fasta(filename):
     if filename.endswith('.gz'):
