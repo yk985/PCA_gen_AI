@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader, TensorDataset
 # from model import loss_wo_J
 from utils import quickread, add_PCA_coords, add_coords_flat
 from dcascore import score, compute_PPV
-from model import AttentionModel, arAttentionModel
+from model_check import AttentionModel#, arAttentionModel
 from model_PCA_correlation import AttentionModel_PCA, AttentionModel_PCA_once
 from sklearn.model_selection import train_test_split
 

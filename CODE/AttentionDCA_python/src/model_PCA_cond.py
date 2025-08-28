@@ -66,7 +66,7 @@ class ModelPCAcondJ(nn.Module):
             )
         if V==None:
             self.V = nn.Parameter(
-                torch.tensor(np.random.randn(H, q, Nbins), dtype=self.dtype, device=self.device)
+                torch.tensor(np.random.randn(H, q, q+Nbins), dtype=self.dtype, device=self.device)
             )
         import os
         cwd = os.getcwd()
@@ -98,17 +98,6 @@ class ModelPCAcondJ(nn.Module):
             # Convert the list back into a tensor with the original dimensions
             tensor = torch.tensor(tensor_data).view(*dims)
             return tensor
-        
-
-        # K = read_tensor_from_txt( cwd +"/results/34_23_save_random_without_J_400/K_tensor.txt")
-        # Q= read_tensor_from_txt( cwd +"/results/34_23_save_random_without_J_400/Q_tensor.txt")
-        # V = read_tensor_from_txt( cwd +"/results/34_23_save_random_without_J_400/V_tensor.txt")
-
-
-
-        # self.Q.data = Q
-        # self.K.data = K
-        # self.V.data = V
 
     def forward(self, Z, weights):
         # Forward just calls the loss, as in your original code
@@ -135,7 +124,7 @@ class ModelPCAcondJ(nn.Module):
         dtype = self.dtype
 
         H, _, N = Q.shape
-        H, _, M = K.shape #(M=N+Nbins)
+        H, _, M = K.shape #(M=N+m)
         # Step 1: Compute the raw attention scores using einsum
         e = torch.einsum('hdi,hdj->ijh', Q, K)  # Shape: (N, M, H)
 
@@ -160,12 +149,11 @@ class ModelPCAcondJ(nn.Module):
         return e
 
     def compute_attention_heads(self, Q, K, V, index_last_domain1=0, H1=0, H2=0):
-        
         device = self.device
         dtype = self.dtype
 
         H, _, N = Q.shape
-        H, _, M = K.shape  #(M=N+Nbins)
+        H, _, M = K.shape  #(M=N+m, m=Ncomp)
         # N, _, _ = V.shape  # Actually your code re-assigns same N but let's keep it as is
         _N, _, _ = V.shape
         index_first_domain2 = index_last_domain1 + 1
@@ -219,7 +207,7 @@ class ModelPCAcondJ(nn.Module):
         mat_ene = torch.zeros(N, q, M, device=device, dtype=dtype)
         # Weighted sum loop
         for h in range(H):
-            V_h = V[h] # shape: V (H,q, Nbins) so V_h has shape (q, Nbins)
+            V_h = V[h] # shape: V (H,q, q+Nbins) so V_h has shape (q, q+Nbins)
             # The next line in your snippet references V_h[:, Z], 
             # but that can be tricky because Z is shape (N+Ncomp, M).
             # We keep it as it is in your snippet, trusting you have reason:

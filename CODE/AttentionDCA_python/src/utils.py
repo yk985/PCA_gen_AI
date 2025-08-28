@@ -84,7 +84,26 @@ def get_PCA_grid_coords(coords_2d, N, plot=False, highlight_index=None):
         plt.show()
     return grid_coords
 
-def add_PCA_coords(seqs, Nbins, max_pot=21,  plot= False, highlight_index=None):
+def shift_coords(grid_coords, q=21):
+    """
+    Apply a deterministic shift to grid coordinates by +q in both axes.
+    
+    Parameters
+    ----------
+    grid_coords : np.ndarray (n, 2)
+        Integer grid coordinates.
+    q : float
+        Shift magnitude.
+    
+    Returns
+    -------
+    shifted_coords : np.ndarray (n, 2)
+        Shifted coordinates (floats).
+    """
+    return grid_coords + q
+
+
+def add_PCA_coords(seqs, Nbins, shift = False, max_pot=21,  plot= False, highlight_index=None):
     """ Parameters: 
         - seqs: numpy array of training sequences (length L)
         - N: int, discretization of PCA into 2D grid NxN
@@ -95,7 +114,8 @@ def add_PCA_coords(seqs, Nbins, max_pot=21,  plot= False, highlight_index=None):
 
     # 2) Discretize PCA coords into NxN grid
     grid_coords = get_PCA_grid_coords(pca_coords, Nbins, plot= plot, highlight_index=highlight_index)  # shape (num_seq, 2)
-
+    if shift:
+        grid_coords = shift_coords(grid_coords, q=max_pot)
     # 3) Convert seqs to array if needed and ensure proper shape for hstack
     seqs_array = np.array(seqs)
     if seqs_array.ndim == 1:  # 1D list of sequences (e.g., strings)
