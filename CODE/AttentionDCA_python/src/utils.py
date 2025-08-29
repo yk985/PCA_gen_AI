@@ -44,7 +44,7 @@ def one_hot_grid(Z, Nbins):
         P_one_hot[i, x_idx * Nbins + y_idx] = 1.0
     return P_one_hot
 
-def get_sequences_pca_coords(sequences_train, max_pot=21,n_comp_PCA=2):
+def get_sequences_pca_coords(sequences_train, max_pot=21,n_comp_PCA=2,return_pca=False):
     """
     Compute 2D PCA coordinates from training sequences using one-hot + scaling.
     """
@@ -54,12 +54,53 @@ def get_sequences_pca_coords(sequences_train, max_pot=21,n_comp_PCA=2):
     train_scaled = scaler.fit_transform(train_flat)
     pca = PCA(n_components=n_comp_PCA)
     train_pca = pca.fit_transform(train_scaled)
+    if return_pca:
+        return train_pca, pca, scaler
     return train_pca
+
+def get_proj_pca_coords(gen_seqs,pca,scaler,max_pot=21):
+    one_hot_proj = one_hot_seq_batch(gen_seqs, max_pot=max_pot)
+    proj_flat = one_hot_proj.reshape(one_hot_proj.shape[0], -1)
+    proj_scaled = scaler.transform(proj_flat)
+    proj_pca = pca.transform(proj_scaled)
+    return proj_pca
+
+from scipy.stats import wasserstein_distance
+
+def wasserstein_pca_distance(pca_train, pca_gen, n_components=2):
+    """
+    Compute Wasserstein distance between PCA projections of train and generated sequences.
+    
+    Parameters
+    ----------
+    pca_train : np.ndarray
+        PCA coordinates of training data, shape (n_samples_train, n_components_total)
+    pca_gen : np.ndarray
+        PCA coordinates of generated data, shape (n_samples_gen, n_components_total)
+    n_components : int
+        Number of PCA components to include in distance calculation (default=2)
+    
+    Returns
+    -------
+    distances : dict
+        Wasserstein distance per PCA component {component_index: distance}
+    mean_distance : float
+        Mean Wasserstein distance across selected components
+    """
+    distances = {}
+    for i in range(n_components):
+        d = wasserstein_distance(pca_train[:, i], pca_gen[:, i])
+        distances[i] = d
+    
+    mean_distance = np.mean(list(distances.values()))
+    return distances, mean_distance
+
 
 from sklearn.cluster import KMeans
 from sklearn.metrics import pairwise_distances
 
-def pca_kmeans_analysis(data,weights, n_components=10, n_clusters=5, random_state=42):
+
+def pca_kmeans_analysis(data,weights, n_components=10, n_clusters=5, return_pca=False,random_state=42):
     """
     Perform PCA + KMeans clustering on training data.
 
@@ -87,7 +128,10 @@ def pca_kmeans_analysis(data,weights, n_components=10, n_clusters=5, random_stat
         - 'kmeans_model': fitted KMeans object
     """
     # Step 1: PCA
-    data_pca = get_sequences_pca_coords(data,n_comp_PCA=n_components)
+    if return_pca:
+        data_pca,pca,scaler= get_sequences_pca_coords(data,n_comp_PCA=n_components,return_pca=return_pca)
+    else:
+        data_pca = get_sequences_pca_coords(data,n_comp_PCA=n_components,return_pca=return_pca)
     coords_min = data_pca.min(axis=0)
     coords_max = data_pca.max(axis=0)
     # Step 2: KMeans
@@ -99,13 +143,17 @@ def pca_kmeans_analysis(data,weights, n_components=10, n_clusters=5, random_stat
     max_distances = []
     points_per_cluster = []
     weights_per_cluster = []
+    sequences_per_cluster = []
 
     for k in range(n_clusters):
         cluster_points = data_pca[labels == k]
         cluster_weights = weights[labels == k]
+        cluster_seq = data[labels == k]
         sizes.append(len(cluster_points))
         points_per_cluster.append(cluster_points)
         weights_per_cluster.append(cluster_weights)
+        sequences_per_cluster.append(cluster_seq)
+
 
         if len(cluster_points) > 0:
             dists = pairwise_distances(cluster_points, [centers[k]])
@@ -122,10 +170,13 @@ def pca_kmeans_analysis(data,weights, n_components=10, n_clusters=5, random_stat
         "labels": labels,
         "kmeans_model": kmeans,
         "max_pca_axe0" : coords_max,
-        "min_pca_axe0" : coords_min
+        "min_pca_axe0" : coords_min,
+        "sequences": sequences_per_cluster
     }
-
-    return results
+    if return_pca:
+        return results, pca,scaler
+    else:
+        return results
 
 import matplotlib.pyplot as plt
 
@@ -141,9 +192,10 @@ def plot_clusters_2d(results, title="PCA + KMeans Clusters"):
         Title of the plot
     """
     plt.figure(figsize=(8, 6))
-
-    for k, pts in results["points"]:
+    k=0
+    for pts in results["points"]:
         plt.scatter(pts[:, 0], pts[:, 1], s=30, alpha=0.6, label=f"Cluster {k}")
+        k+=1
 
     # Plot cluster centers
     centers = results["centers"]
