@@ -4,6 +4,145 @@ import numpy as np
 
 from seq_utils import letter_to_num
 
+class SequencePLMvec:
+    def __init__(self, J, initial_sequence = None, beta = 1, nb_PCA_comp=0,target_coords=np.array([]),J_tens_PCA=None,beta_PCA=1):
+        """
+        Initialize the SequencePLM object with a coupling tensor J of the family and an optional initial sequence.
+        """
+        self.J = J
+        self.J_PCA=J_tens_PCA
+        #self.L = J.shape[-1]
+        self.beta = beta
+        self.beta_PCA=beta_PCA
+        self.nb_PCA_comp=nb_PCA_comp
+        if not (J_tens_PCA is None):
+            if nb_PCA_comp!=J_tens_PCA.shape[-1]:
+                print("Mismatch of PCA tensor and nb PCA components indicated")
+        if J_tens_PCA is None:
+            self.L = J.shape[-1] - nb_PCA_comp  # Length of the sequence without PCA components
+        else:
+            self.L = J.shape[-1]
+        if initial_sequence is None:
+            self.sequence = np.random.choice(np.arange(21), self.L) # Sequence of ints (1 to 21) 
+            if len(target_coords)==nb_PCA_comp:
+                self.sequence = np.concatenate((self.sequence,target_coords))
+            else:
+                print("number of PCA components doesn't match size of PCA list")
+        else:
+            self.sequence = initial_sequence
+
+    def to_letter(self):
+        """
+        Show sequence as letters
+        """
+        print("Sequence:", self.sequence)
+        num_to_letter = {v: k for k, v in letter_to_num.items()}
+        letter_seq = ''.join([num_to_letter[i] for i in self.sequence[:len(self.sequence)-self.nb_PCA_comp]])
+        print(letter_seq)
+        return letter_seq
+
+    def plm_calc(self, site, trial_aa):
+        """
+        Compute unnormalized pseudo-likelihood of trial_aa at a given site.
+        site: int from 0 to L-1
+        trial_aa: int from 0 to 21 (amino acid index)
+        """
+        if site < 0 or site >= self.L:
+            raise ValueError(f"Site {site} is out of bounds for sequence length {self.L}.")
+        sum_energy = 0.0
+        if not ( self.J_PCA is None):      
+            for i in range(self.nb_PCA_comp):
+                    PCA_coord = self.sequence[self.L + i] 
+                    sum_energy += self.beta_PCA * self.J_PCA[trial_aa, PCA_coord, site, i] # J_PCA of shape ([q, Nbins, L, nb_PCA_comp])
+        else:
+            for i in range(self.nb_PCA_comp):
+                sum_energy+=self.beta_PCA*self.J[trial_aa,self.sequence[self.L+i],site,self.L+i] # J of shape ([q, q+Nbins, L, L+nb_PCA_comp])
+        for j in range(self.L):
+            if j == site:
+                continue
+            aa_j = self.sequence[j]
+            sum_energy += self.beta * self.J[trial_aa, aa_j, site, j] 
+        prob = sum_energy  
+        return prob
+    
+    def plm_calc_vec(self, site):
+        """
+        Compute unnormalized pseudo-likelihoods for ALL trial amino acids at once.
+        Returns array of shape (q,) with one score per amino acid.
+        """
+        q = 21
+        trial_aas = np.arange(q)[:, None]  # (21,1)
+
+        # --- Sequence couplings ---
+        mask = np.arange(self.L) != site
+        other_sites = np.arange(self.L)[mask]
+        aa_vector = self.sequence[:self.L][mask]              # amino acids at other sites
+        seq_energies = self.J[trial_aas, aa_vector, site, other_sites]  # (21, L-1)
+        sum_energy = self.beta * np.sum(seq_energies, axis=1)           # (21,)
+
+        # --- PCA couplings ---
+        if self.nb_PCA_comp > 0:
+            pca_indices = np.arange(self.L, self.L + self.nb_PCA_comp)  # j-axis indices
+            pca_bins = self.sequence[pca_indices]                       # PCA bins
+
+            if self.J_PCA is not None:
+                # J_PCA: (q, Nbins, L, nb_PCA_comp)
+                pca_energies = self.J_PCA[trial_aas, pca_bins, site, np.arange(self.nb_PCA_comp)]
+            else:
+                # J: (q, q+Nbins, L, L+nb_PCA_comp) — bins already shifted by q
+                pca_energies = self.J[trial_aas, pca_bins, site, pca_indices]
+
+            sum_energy += self.beta_PCA * np.sum(pca_energies, axis=1)
+
+        return sum_energy
+    
+    def plm_site_distribution(self, site):
+        """
+        Compute probability distriution for specific site (normalized)
+        """
+        probs = []
+        for trial_aa in range(21):
+            probs.append(self.plm_calc(site, trial_aa))
+        probs = np.array(probs)
+        probs = np.exp(probs-probs.max()) #to avoid overflow for high beta
+        probs /= probs.sum()
+        return probs
+    
+    def plm_site_distribution_vec(self, site):
+        """
+        Compute probability distribution for specific site (normalized).
+        """
+        sum_energy = self.plm_calc_vec(site)  # (21,)
+        probs = np.exp(sum_energy - np.max(sum_energy))  # stable softmax
+        probs /= probs.sum()
+        return probs
+    def check_vectorized(self, site):
+        """
+        Check that vectorized and loop implementations give same result
+        """
+        probs_loop = self.plm_site_distribution(site)
+        probs_vec = self.plm_site_distribution_vec(site)
+        assert np.allclose(probs_loop, probs_vec), f"Mismatch at site {site}"
+        print(f"Vectorized check passed at site {site}")
+
+    def draw_aa(self, site, vec=True):
+        """
+        Sample a new AA at the given site from PLM distribution
+        """
+        if vec:
+            probs = self.plm_site_distribution_vec(site)
+        else:
+            probs = self.plm_site_distribution(site)
+        new_aa = np.random.choice(21, p=probs) # aa from 0 to 20
+        self.sequence[site] = new_aa
+    
+    def seq_energy(self):
+        sum=0
+        for i in range(self.L):
+            for j in range(self.L):
+                sum+=self.J[self.sequence[i], self.sequence[j],i,j]
+        return sum
+
 class SequencePLM:
     def __init__(self, J, initial_sequence = None, beta = 1, nb_PCA_comp=0,PCA_component_list=np.array([]),J_tens_PCA=None,beta_PCA=1):
         """
