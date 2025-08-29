@@ -56,12 +56,115 @@ def get_sequences_pca_coords(sequences_train, max_pot=21,n_comp_PCA=2):
     train_pca = pca.fit_transform(train_scaled)
     return train_pca
 
-def get_PCA_grid_coords(coords_2d, N, plot=False, highlight_index=None):
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances
+
+def pca_kmeans_analysis(data,weights, n_components=10, n_clusters=5, random_state=42):
+    """
+    Perform PCA + KMeans clustering on training data.
+
+    Parameters
+    ----------
+    data : array-like, shape (n_samples, n_features)
+        Input training data.
+    n_components : int, default=10
+        Number of PCA components.
+    n_clusters : int, default=5
+        Number of KMeans clusters.
+    random_state : int, default=42
+        Random state for reproducibility.
+
+    Returns
+    -------
+    results : dict
+        Dictionary with cluster analysis containing:
+        - 'centers': cluster centers in PCA space
+        - 'sizes': number of points in each cluster
+        - 'max_distances': largest distance from center to a point
+        - 'points': list of arrays with points belonging to each cluster
+        - 'labels': cluster labels for all points
+        - 'pca_model': fitted PCA object
+        - 'kmeans_model': fitted KMeans object
+    """
+    # Step 1: PCA
+    data_pca = get_sequences_pca_coords(data,n_comp_PCA=n_components)
+    coords_min = data_pca.min(axis=0)
+    coords_max = data_pca.max(axis=0)
+    # Step 2: KMeans
+    kmeans = KMeans(n_clusters=n_clusters, random_state=random_state)
+    labels = kmeans.fit_predict(data_pca)
+
+    centers = kmeans.cluster_centers_
+    sizes = []
+    max_distances = []
+    points_per_cluster = []
+    weights_per_cluster = []
+
+    for k in range(n_clusters):
+        cluster_points = data_pca[labels == k]
+        cluster_weights = weights[labels == k]
+        sizes.append(len(cluster_points))
+        points_per_cluster.append(cluster_points)
+        weights_per_cluster.append(cluster_weights)
+
+        if len(cluster_points) > 0:
+            dists = pairwise_distances(cluster_points, [centers[k]])
+            max_distances.append(np.max(dists))
+        else:
+            max_distances.append(0.0)
+
+    results = {
+        "centers": centers,
+        "sizes": np.array(sizes),
+        "max_distances": np.array(max_distances),
+        "points": points_per_cluster,
+        "weights": weights_per_cluster,
+        "labels": labels,
+        "kmeans_model": kmeans,
+        "max_pca_axe0" : coords_max,
+        "min_pca_axe0" : coords_min
+    }
+
+    return results
+
+import matplotlib.pyplot as plt
+
+def plot_clusters_2d(results, title="PCA + KMeans Clusters"):
+    """
+    Plot the first two PCA components with clusters in different colors.
+    
+    Parameters
+    ----------
+    results : dict
+        Dictionary returned by pca_kmeans_analysis()
+    title : str
+        Title of the plot
+    """
+    plt.figure(figsize=(8, 6))
+
+    for k, pts in results["points"]:
+        plt.scatter(pts[:, 0], pts[:, 1], s=30, alpha=0.6, label=f"Cluster {k}")
+
+    # Plot cluster centers
+    centers = results["centers"]
+    plt.scatter(centers[:, 0], centers[:, 1], c="black", marker="X", s=200, label="Centers")
+
+    plt.xlabel("PC1")
+    plt.ylabel("PC2")
+    plt.title(title)
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def get_PCA_grid_coords(coords_2d, N, plot=False, highlight_index=None,coords_min=None, coords_max=None):
     """
     Normalize and discretize 2D PCA coordinates into an NxN integer grid.
     """
-    coords_min = coords_2d.min(axis=0)
-    coords_max = coords_2d.max(axis=0)
+    if coords_min is None or coords_max is None:
+        coords_min = coords_2d.min(axis=0)
+        coords_max = coords_2d.max(axis=0)
+
+
     norm_coords = (coords_2d - coords_min) / (coords_max - coords_min + 1e-8)
     grid_coords = (norm_coords * (N - 1)).astype(int)
     
