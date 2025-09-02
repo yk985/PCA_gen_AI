@@ -153,17 +153,17 @@ class ModelPCAcondJ(nn.Module):
         dtype = self.dtype
 
         H, _, N = Q.shape
-        H, _, M = K.shape  #(M=N+m, m=Ncomp)
+        H, _, NplusNcomp = K.shape  #(NplusNcomp=N+m, m=Ncomp)
         # N, _, _ = V.shape  # Actually your code re-assigns same N but let's keep it as is
         _N, _, _ = V.shape
         index_first_domain2 = index_last_domain1 + 1
 
         # Get e from compute_product_Q_K
-        e = self.compute_product_Q_K(Q, K) # shape: (N, M, H)
+        e = self.compute_product_Q_K(Q, K) # shape: (N, NplusNcomp, H)
 
-        sf = torch.zeros(N, M, H, device=device, dtype=dtype)
-        # e has shape (N, M, H)
-        sf = torch.softmax(e, dim=1)  # shape (N, M, H), softmax applied over M for each head
+        sf = torch.zeros(N, NplusNcomp, H, device=device, dtype=dtype)
+        # e has shape (N, NplusNcomp, H)
+        sf = torch.softmax(e, dim=1)  # shape (N, NplusNcomp, H), softmax applied over NplusNcomp for each head
         #for h in range(H):
         #    if index_last_domain1 != 0:
         #        print("Oops deleted domain masks")
@@ -199,10 +199,11 @@ class ModelPCAcondJ(nn.Module):
         )
         # From your snippet, you used e.shape for N_e1, N_e2, H_e,
         # but actually let's just read from sf itself.
-        N, N_plus_Ncomp, H_e = sf.shape
-        N_seq, M = Z.shape  # Z: (N+Ncomp, M)
-        Ncomp = N_plus_Ncomp - N
-        assert N_plus_Ncomp == Z.shape[0], "Mismatch in key dimension"
+        N, NplusNcomp, H_e = sf.shape
+        N_1, M = Z.shape  # Z: (N+Ncomp, M)
+        #print(sf.shape, Z.shape)
+        Ncomp = NplusNcomp - N
+        assert NplusNcomp == Z.shape[0], "Mismatch in key dimension"
 
         mat_ene = torch.zeros(N, q, M, device=device, dtype=dtype)
         # Weighted sum loop
@@ -213,6 +214,7 @@ class ModelPCAcondJ(nn.Module):
             # We keep it as it is in your snippet, trusting you have reason:
             V_h_Zj = V_h[:, Z]     # shape => (q, N+Ncomp, M)
             V_h_Zj = V_h_Zj.permute(1, 0, 2)  # => (N+Ncomp, q, M)
+            #print(sf.shape, V_h_Zj.shape)
             mat_ene_h = torch.einsum('ij,jqm->iqm', sf[:, :, h], V_h_Zj)
             mat_ene += mat_ene_h
         mat_ene = mat_ene.permute(1, 0, 2)
