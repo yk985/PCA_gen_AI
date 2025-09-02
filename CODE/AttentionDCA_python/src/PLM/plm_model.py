@@ -291,6 +291,8 @@ class BatchSequencePLM:
         core_sequences = np.random.randint(0, 21, size=(N, self.L))
 
         if nb_PCA_comp > 0:
+            print(len(PCA_component_list) )
+            print(nb_PCA_comp)
             if PCA_component_list is None:
                 raise ValueError("PCA_component_list must be provided for PCA components.")
             if len(PCA_component_list) != nb_PCA_comp:

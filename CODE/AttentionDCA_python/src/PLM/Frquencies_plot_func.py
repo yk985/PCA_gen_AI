@@ -9,7 +9,7 @@ font = {'size'   : 18}
 matplotlib.rc('font', **font)
 
 
-def compute_position_frequencies(sequence_array, W=None ,n_amino_acids=None):
+def compute_position_frequencies(sequence_array, W=None ,n_amino_acids=21):
     """
     Computes frequency of each amino acid at each position.
 
