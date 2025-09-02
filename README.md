@@ -4,12 +4,19 @@ For the base code check https://github.com/marziof/PLM-gen-DCA.  When referencin
 **Trainers/models**
 
 All the trainers can be found in attention.py. The main modifications to those functions are the addition of the PCA coordinates to the train sequences, and the choice of the model used.
+
 -trainer(): Uses the normal AttentionModel (no PCA components). A small modification was made: masking after the softmax instead of before to match the Julia code
+
 -trainer_PCA_comp_brute_force(): Add PCA components and treats them as extra amino acides in the chain expanding the J tensor to (q',q',L+N_PCA,L+N_PCA) with q'=max(n_bins,q). This trainer uses the same AttentionModel just with different dimensions than the prvious one
+
 -trainerCondJ(): Add PCA comp as well. Only uses one tensor J but with less dimensions than the last one. J has a shape of (q,q+nbins,L,L+N_PCA). The model used is ModelPCACond.
+
 -trainer_PCA_comp_2_model(): trains a second tensor G (not the J for the sequence self interaction), that discribes the interaction between the PCA components and the aa chain. This model needs the QKV tensors used to calculate the J tensor to calculate the loss properly.
+
 -trainer_PCA_comp_2_model_once(): calculates the same as the one before but it finds J and G at the same time so no need to give it the QKV tensors.
+
 -ar_trainer(): Implements an autoregressive approach to compare with the Julia.
+
 The trainings are done in the file train_jdoms_new.ipynb
 
 **Generation methods**
