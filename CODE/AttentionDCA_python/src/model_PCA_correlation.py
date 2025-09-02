@@ -228,63 +228,7 @@ class AttentionModel_PCA(nn.Module):
         e = self.compute_product_Q_K(Q, K)
         N1,N2,H=e.shape
 
-        sf = torch.zeros(N1, N2, H, device=device, dtype=dtype)
-        for h in range(H):
-            if index_last_domain1 != 0:
-                pass #Again no masks 
-                # if h < H1:
-                #     # Heads for Domain 1
-                #     softmax_vals = torch.softmax(
-                #         e[0:index_last_domain1+1, 0:index_last_domain1+1, h], 
-                #         dim=1
-                #     )
-                #     top = torch.cat([
-                #         softmax_vals,
-                #         torch.zeros(
-                #             index_last_domain1+1, 
-                #             N - index_last_domain1 - 1, 
-                #             device=device
-                #         )
-                #     ], dim=1)
-                #     sf_domain = torch.cat([
-                #         top,
-                #         torch.zeros(
-                #             N - index_last_domain1 - 1, 
-                #             N, 
-                #             device=device
-                #         )
-                #     ], dim=0)
-                #     sf = sf.clone()
-                #     sf[:, :, h] = sf_domain
-                # elif h < H2:
-                #     # Heads for Domain 2
-                #     softmax_vals = torch.softmax(
-                #         e[index_first_domain2:, index_first_domain2:, h], 
-                #         dim=1
-                #     )
-                #     # Create the top-left zero block
-                #     bottom_left = torch.zeros(
-                #         N - index_first_domain2, 
-                #         index_first_domain2, 
-                #         device=device
-                #     )
-                #     # top and bottom
-                #     top = torch.zeros(index_first_domain2, N, device=device)
-                #     bottom = torch.cat([bottom_left, softmax_vals], dim=1)
-                #     sf_domain = torch.cat([top, bottom], dim=0)
-                #     sf = sf.clone()
-                #     sf[:, :, h] = sf_domain
-                # else:
-                #     # Heads for inter-domain interactions
-                #     sf_domain = torch.softmax(e[:, :, h], dim=1)
-                #     sf = sf.clone()
-                #     sf[:, :, h] = sf_domain
-            else:
-                # No domain masks applied
-                sf_domain = torch.softmax(e[:, :, h], dim=1)
-                sf = sf.clone()
-                sf[:, :, h] = sf_domain
-
+        sf = torch.softmax(e, dim=1) 
         return sf #shape (N1,N2,H)
 
     def compute_mat_ene(self, Q, K, V, Z, H1=0, H2=0, index_last_domain1=0):
@@ -324,20 +268,13 @@ class AttentionModel_PCA(nn.Module):
         self_mask = (i_indices != j_indices).float().to(Q.device)
 
         sf = sf * self_mask.unsqueeze(-1)
-        mat_ene = torch.zeros(N, q, M, device=device, dtype=dtype)
+        # Gather all heads simultaneously
+        V_Zj = V[:, :, Z] # (H, q, N, M)
+        V_Zj = V_Zj.permute(2, 1, 3, 0) # (N, q, M, H)
 
-        # Weighted sum loop
-        for h in range(H):
-            V_h = V[h]
-            # The next line in your snippet references V_h[:, Z], 
-            # but that can be tricky because Z is shape (N, M).
-            # We keep it as it is in your snippet, trusting you have reason:
-            V_h_Zj = V_h[:, Z]     # shape => (q, N, M)
-            V_h_Zj = V_h_Zj.permute(1, 0, 2)  # => (N, q, M)
 
-            mat_ene_h = torch.einsum('ij,jqm->iqm', sf[:, :, h], V_h_Zj)
-            mat_ene += mat_ene_h
-
+        # Contract across N and H in one shot
+        mat_ene = torch.einsum('ijh,jqmh->iqm', sf, V_Zj) # (N, q, M)
         mat_ene = mat_ene.permute(1, 0, 2)
         return mat_ene, sf
     def compute_mat_ene_cross(self, Q, K, V, Z1, Z2, H1=0, H2=0, index_last_domain1=0):
@@ -367,29 +304,21 @@ class AttentionModel_PCA(nn.Module):
         # Final energy: (q1, N1, M)  (same as compute_mat_ene)
         mat_ene = torch.zeros(q1, N1, M, device=device, dtype=dtype)
 
-        for h in range(H):
-            V_h = V[h]  # (q1, q2)
+        # ---- Gather V across q2 dimension using Z2 ----
+        Z2_exp = Z2.unsqueeze(0).unsqueeze(0)               # (1, 1, N2, M)
+        Z2_exp = Z2_exp.expand(H, q1, N2, M)                # (H, q1, N2, M)
 
-            # Z1: (N1, M) → (N1, 1, M)
-            Z1_exp = Z1[:, None, :].expand(N1, N2, M)  # (N1, N2, M)
-            Z2_exp = Z2[None, :, :].expand(N1, N2, M)  # (N1, N2, M)
+        V_exp = V.unsqueeze(2).unsqueeze(3).expand(H, q1, N2, M, q2)  # (H, q1, N2, M, q2)
+        V_Z2 = torch.gather(V_exp, -1, Z2_exp.unsqueeze(-1))          # (H, q1, N2, M, 1)
+        V_Z2 = V_Z2.squeeze(-1)                                       # (H, q1, N2, M)
 
-            # Flatten to (N1*N2*M,)
-            Z1_flat = Z1_exp.reshape(-1)
-            Z2_flat = Z2_exp.reshape(-1)
+        V_Z2 = V_Z2.permute(1, 2, 3, 0)   # (q1, N2, M, H)
 
-            # Index into V_h[q1, q2] → (N1*N2*M, q1)
-            V_selected_flat = V_h[:, Z2_flat]  # (q1, N1*N2*M)
+        # Expand across N1 to align with sf
+        V_Z2 = V_Z2.unsqueeze(1).expand(q1, N1, N2, M, H)  # (q1, N1, N2, M, H)
 
-            # Reshape to (q1, N1, N2, M)
-            V_selected = V_selected_flat.view(q1, N1, N2, M)
-
-            sf_h = sf[:, :, h]  # (N1, N2)
-
-            # Weighted sum over j (dim=2, the N2 dimension)
-            mat_ene_h = torch.einsum('ij,qijm->qim', sf_h, V_selected)  # (q1, N1, M)
-
-            mat_ene += mat_ene_h
+        # ---- Weighted sum ----
+        mat_ene = torch.einsum('nkh,qnkmh->qnm', sf, V_Z2)  # (q1, N1, M)
 
         return mat_ene, sf  # mat_ene: (q1, N1, M)
 
@@ -476,7 +405,7 @@ class AttentionModel_PCA(nn.Module):
         loss_matrix= weights*torch.sum(pos_term-logZ,dim=0)
         loss = -loss_matrix.mean()  # scalar
         loss+=reg2+reg1
-        del sf_J,sf_G, mat_ene_J,mat_ene_G, loss_matrix, VV_T
+        del sf_J,sf_G, mat_ene_J,mat_ene_G, loss_matrix, VV_T, VV, M_matrix
         torch.cuda.empty_cache()
 
         
