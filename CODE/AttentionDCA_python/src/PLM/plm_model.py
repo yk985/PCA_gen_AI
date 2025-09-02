@@ -71,12 +71,17 @@ class SequencePLMvec:
         Returns array of shape (q,) with one score per amino acid.
         """
         q = 21
+        # trial amino acids (0 to 20) (ints)
         trial_aas = np.arange(q)[:, None]  # (21,1)
-
         # --- Sequence couplings ---
         mask = np.arange(self.L) != site
         other_sites = np.arange(self.L)[mask]
         aa_vector = self.sequence[:self.L][mask]              # amino acids at other sites
+        aa_vector = aa_vector.astype(int)
+        #print("Site:", site)
+        #print("Other sites:", other_sites)
+        #print("AA vector:", aa_vector)
+        #print("Trial AAs:", trial_aas)
         seq_energies = self.J[trial_aas, aa_vector, site, other_sites]  # (21, L-1)
         sum_energy = self.beta * np.sum(seq_energies, axis=1)           # (21,)
 
@@ -134,6 +139,7 @@ class SequencePLMvec:
         else:
             probs = self.plm_site_distribution(site)
         new_aa = np.random.choice(21, p=probs) # aa from 0 to 20
+        new_aa = int(new_aa)
         self.sequence[site] = new_aa
     
     def seq_energy(self):
@@ -268,7 +274,192 @@ class SequencePLM:
         return sum
     
 
+class BatchSequencePLMvec:
+    def __init__(self, J, N, beta=1, nb_PCA_comp=0, PCA_component_list=None, J_tens_PCA=None, beta_PCA=1):
+        """
+        Initialize with a batch of N independent sequences.
+        """
+        self.J = J
+        self.J_PCA = J_tens_PCA
+        self.beta = beta
+        self.beta_PCA = beta_PCA
+        self.nb_PCA_comp = nb_PCA_comp
+        self.N = N
 
+        if self.J_PCA is not None:
+            self.L = J.shape[-1]
+        else:
+            self.L = J.shape[-1] - nb_PCA_comp
+
+        # Initialize N random sequences
+        core_sequences = np.random.randint(0, 21, size=(N, self.L))
+
+        if nb_PCA_comp > 0:
+            if PCA_component_list is None:
+                raise ValueError("PCA_component_list must be provided for PCA components.")
+            if len(PCA_component_list) != nb_PCA_comp:
+                raise ValueError("Mismatch between number of PCA components and list provided.")
+            pca_array = np.tile(PCA_component_list, (N, 1))  # replicate for each sequence
+            self.sequences = np.concatenate((core_sequences, pca_array), axis=1)
+        else:
+            self.sequences = core_sequences  # shape: (N, L [+ nb_PCA])
+
+    def plm_site_distribution_batch_vec_full(self, site):
+        N, L_total = self.sequences.shape
+        L = self.L
+
+        # Indices of other sites
+        mask = np.arange(L) != site
+        sites_vector = np.arange(L)[mask]           # shape (L-1,)
+        aa_vector = self.sequences[:, mask]              # shape (N, L-1)
+
+        # Trial amino acids 0..20
+        trial_aa = np.arange(21)[:, None, None]    # shape (21,1,1)
+
+        # Fancy indexing: J[trial_aa, aa_vector, site, sites_vector] -> shape (21, N, L-1)
+        energy_matrix = self.J[trial_aa, aa_vector[None, :, :], site, sites_vector[None, :]] * self.beta
+
+        # Sum over other sites
+        energies = np.sum(energy_matrix, axis=2).T  # shape (N,21)
+
+        # PCA contributions
+        if self.nb_PCA_comp > 0:
+            PCA_coords = self.sequences[:, L:L+self.nb_PCA_comp]  # shape (N, nb_PCA_comp)
+            if self.J_PCA is not None:
+                # Broadcast over trial amino acids and PCA components
+                energies += np.sum(self.beta_PCA * self.J_PCA[trial_aa[:, None, None], PCA_coords[None, :, :], site, np.arange(self.nb_PCA_comp)[:, None]], axis=0)
+            else:
+                # Fallback: use main J tensor for PCA sites
+                energies += np.sum(self.beta_PCA * self.J[trial_aa[:, None, None], PCA_coords[None, :, :], site, np.arange(self.L, self.L+self.nb_PCA_comp)[None, :]], axis=0)
+
+        # Softmax with numerical stability
+        energies -= energies.max(axis=1, keepdims=True)
+        probs = np.exp(energies)
+        probs /= probs.sum(axis=1, keepdims=True)
+        return probs  # shape (N, 21)
+    
+
+    def plm_calc_batch(self, site, trial_aa):
+        """
+        Compute unnormalized pseudo-likelihood for all N sequences at one site and one trial AA.
+        Return: (N,) array
+        """
+        aa_j_all = self.sequences[:, :self.L]  # shape (N, L)
+        aa_trial = np.full(self.N, trial_aa)
+
+        energy = np.zeros(self.N)
+
+        for j in range(self.L):
+            if j == site:
+                continue
+            aa_j = aa_j_all[:, j]  # shape (N,)
+            energy += self.beta * np.asarray(self.J[trial_aa, aa_j, site, j])  # vectorized lookup
+
+        # If PCA is used
+        if self.nb_PCA_comp > 0:
+            for i in range(self.nb_PCA_comp):
+                PCA_coord = self.sequences[:, self.L + i]
+                if self.J_PCA is not None:
+                    energy += self.beta_PCA * np.asarray(self.J_PCA[trial_aa, PCA_coord, site, i])
+                else:
+                    energy += self.beta_PCA * np.asarray(self.J[trial_aa, PCA_coord, site, self.L + i])
+        
+        return energy
+
+    def plm_site_distribution_batch(self, site):
+        """
+        Compute PLM probabilities for each AA (0..20) for all N sequences at site.
+        Returns: (N, 21) array of probabilities
+        """
+        raw_scores = np.zeros((self.N, 21))
+        for aa in range(21):
+            raw_scores[:, aa] = self.plm_calc_batch(site, aa)
+
+        raw_scores -= raw_scores.max(axis=1, keepdims=True)  # stability
+        probs = np.exp(raw_scores)
+        probs /= probs.sum(axis=1, keepdims=True)  # normalize
+        return probs  # shape: (N, 21)
+
+    def compare_J(self,J ,site):
+        """
+        Compute PLM probabilities for each AA (0..20) for all N sequences at site.
+        Returns: (N, 21) array of probabilities
+        """
+        prob_list_self_J=self.plm_site_distribution_batch(site)
+        raw_scores = np.zeros((self.N, 21))
+        for aa in range(21):
+            raw_scores[:, aa] = self.plm_calc_batch_diff_J(J,site,aa)
+
+        raw_scores -= raw_scores.max(axis=1, keepdims=True)  # stability
+        probs = np.exp(raw_scores)
+        probs /= probs.sum(axis=1, keepdims=True)  # normalize
+        diff=abs(prob_list_self_J-probs).mean()
+        return diff  # shape: (N, 21)
+
+    def assign_seqs(self,sequences):
+        self.sequences=sequences
+
+    def draw_aa_batch_old(self, site):
+        """
+        Sample new AAs for all N sequences at a given site.
+        """
+        probs = self.plm_site_distribution_batch_vec_full(site)  # (N, 21)
+        new_aas = np.array([np.random.choice(21, p=p) for p in probs])  # (N,)
+        self.sequences[:, site] = new_aas
+
+    def draw_aa_batch(self, site):
+        """
+        Sample new AAs for all N sequences at a given site.
+        Fully vectorized using cumulative probabilities + argmax.
+        """
+        probs = self.plm_site_distribution_batch_vec_full(site)  # (N, 21)
+        probs_old = self.plm_site_distribution_batch(site)  # (N, 21) old implementation for comparison
+        assert np.allclose(probs, probs_old), "Mismatch between vectorized and looped PLM distribution"
+        #print("Vectorized PLM distribution matches looped version.")
+        cum_probs = np.cumsum(probs, axis=1)  # (N, 21)
+        r = np.random.rand(probs.shape[0])    # (N,)
+        new_aas = (cum_probs >= r[:, None]).argmax(axis=1)  # (N,)
+        self.sequences[:, site] = new_aas
+
+    def compare_draw(self,site):
+        """
+        Compare old and new draw methods.
+        """
+        for _ in range(5):  # repeat a few times to average out randomness; draw then check at the end
+            self.draw_aa_batch_old(site)
+            self.draw_aa_batch(site)
+            # store drawn aas
+            aas_old = self.sequences[:, site].copy()
+            aas_new = self.sequences[:, site].copy()
+            if not np.array_equal(aas_old, aas_new):
+                print("Mismatch in drawn AAs!")
+            else:
+                print("Drawn AAs match.")
+
+    def evolve_all(self, n_iter=500):
+        """
+        Perform Gibbs sampling over all sequences for n_iter iterations.
+        """
+        for _ in tqdm(range(n_iter)):
+            site=np.random.choice(self.L)
+            self.draw_aa_batch(site)
+
+    def get_sequences(self):
+        """
+        Return all N sequences.
+        """
+        return self.sequences
+
+    def to_letters(self):
+        """
+        Return N sequences in letter format.
+        """
+        num_to_letter = {v: k for k, v in letter_to_num.items()}
+        letter_seqs = []
+        for seq in self.sequences[:, :self.L]:
+            letter_seq = ''.join([num_to_letter[i] for i in seq])
+            letter_seqs.append(letter_seq)
+        return letter_seqs
 
 class BatchSequencePLM:
     def __init__(self, J, N, beta=1, nb_PCA_comp=0, PCA_component_list=None, J_tens_PCA=None, beta_PCA=1):
