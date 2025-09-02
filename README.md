@@ -1,5 +1,5 @@
 # PCA_gen_AI
-For the base code check https://github.com/marziof/PLM-gen-DCA . This read me we only treat the modifications made on the base code namely the different trainer methods for different models and a new generation models.
+For the base code check https://github.com/marziof/PLM-gen-DCA.  When referencing to the Julia code we mean the https://github.com/pagnani/AttentionDCA.jl . This read me we only treat the modifications made on the base code namely the different trainer methods for different models and a new generation models.
 
 **Trainers/models**
 
@@ -24,7 +24,9 @@ The generations are done in the file vectorized_gen_test.ipynb
 The main plots can  be found in plm_gen_PCA_plots3.ipynb. We use PCA and frequency/couple correlations to compare the generated and train sequences. For high PCA dimension, we use Kmeans method to detect the clusters in the PCA space (so we can have a target to generate at). Then we compare the train sequences in the cluster to the generated ones using root mean square distance in the PCA space and the Wasserstein distance for each component. We also plot the frequencies of the generated sequences against the whole data set and against the ones in the chosen cluster. 
 The frequency methods this time were modified to use the weights of the train sequences as well to calculate the frequencies of the train sequences.
 
+**tests**
 
+In TEST/Checkmodels and test_loss_function_byhand.ipynb are notebooks used to compare the model functions to the ones in Julia and to the calculation of the loss by hand to be sure the dimensions and broadcasting are done correctly
 
 
 
