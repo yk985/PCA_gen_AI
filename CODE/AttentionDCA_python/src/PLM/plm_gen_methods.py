@@ -1,4 +1,4 @@
-from plm_model import SequencePLM, BatchSequencePLM
+from plm_model import SequencePLM, BatchSequencePLM, SequencePLMvec, BatchSequencePLMvec
 from seq_utils import nums_to_letters
 
 import os
@@ -18,6 +18,62 @@ def generate_plm(J,N_seqs=40000, init_sequence=None,beta=1,nb_PCA_comp=0,PCA_com
     gen_sequences = np.array(gen_sequences)
     return gen_sequences
 
+
+def generate_plm_vec(J, N_seqs=40000, init_sequence=None, beta=1, nb_PCA_comp=0, beta_pca = 0, target_coords=np.array([])):
+    """
+    Generate N_seqs new sequences using PLM.
+
+    Parameters
+    ----------
+    J : interaction tensor
+    N_seqs : int
+        Number of sequences to generate
+    init_sequence : array-like
+        Optional initial sequence
+    beta : float
+        Inverse temperature
+    site_selector : function(seq) -> int
+        Function to select site to update.
+        If None, sites are chosen uniformly at random.
+    """
+    gen_sequences = []
+    seq = SequencePLMvec(J, init_sequence, beta=beta, nb_PCA_comp=nb_PCA_comp, target_coords=target_coords, beta_PCA=beta_pca)
+
+    for i in tqdm(range(N_seqs)):
+        site = np.random.randint(seq.L)  # uniform random
+        #seq.check_vectorized(site)
+        seq.draw_aa(site, vec=True)
+        gen_sequences.append(seq.sequence.copy())
+
+    return np.array(gen_sequences)
+
+def generate_plm_batch_vec(J, Nseqs=1000, steps=2000, beta=1):
+    """
+    Generate Nseqs sequences, each evolved for 'steps' iterations.
+    Returns only the final sequence for each.
+    """
+    L = J.shape[2]  # sequence length
+    sequences = [] #np.random.randint(21, size=(Nseqs, L))  # random initialization
+    SeqBatch = BatchSequencePLMvec(J, Nseqs, beta=beta)
+    for i in tqdm(range(steps)):
+        # pick random site per iteration (could vectorize multiple sites if desired)
+        site = np.random.randint(L)  # uniform random
+        SeqBatch.draw_aa_batch(site)
+        #SeqBatch.compare_draw(site)
+        sequences.append(SeqBatch.get_sequences())
+            #plm = BatchSequencePLMvec(J, Nseqs, beta=beta)        
+        # compute PLM probabilities for all sequences at this site
+        #probs = plm_site_distribution_batch_vec_full(sequences, J, site, beta)  # vectorized
+        
+        # vectorized sampling
+        #cum_probs = np.cumsum(probs, axis=1)
+        #r = np.random.rand(Nseqs)
+        #sequences[:, site] = np.argmax(cum_probs >= r[:, None], axis=1)
+    sequences = np.array(sequences[-1])  # return only the last sequences
+    return sequences
+
+gen_seqs_batch = generate_plm_last_seq(Jtens.cpu().numpy(), Nseqs=10000, steps=1500, beta=1, site_selector=1)
+print(gen_seqs_batch.shape)
 
 
 def generate_plm_vect(J,n_iter, init_sequence=500,beta=1,nb_PCA_comp=0,PCA_comp_list=np.array([]),J_PCA=None,beta_PCA=1):

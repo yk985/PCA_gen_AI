@@ -307,11 +307,12 @@ class BatchSequencePLMvec:
     def plm_site_distribution_batch_vec_full(self, site):
         N, L_total = self.sequences.shape
         L = self.L
-
         # Indices of other sites
         mask = np.arange(L) != site
         sites_vector = np.arange(L)[mask]           # shape (L-1,)
-        aa_vector = self.sequences[:, mask]              # shape (N, L-1)
+        aa_j_all = self.sequences[:, :self.L]
+        aa_vector = aa_j_all[:, mask] 
+        #aa_vector = self.sequences[:, mask]              # shape (N, L-1)
 
         # Trial amino acids 0..20
         trial_aa = np.arange(21)[:, None, None]    # shape (21,1,1)
@@ -330,7 +331,14 @@ class BatchSequencePLMvec:
                 energies += np.sum(self.beta_PCA * self.J_PCA[trial_aa[:, None, None], PCA_coords[None, :, :], site, np.arange(self.nb_PCA_comp)[:, None]], axis=0)
             else:
                 # Fallback: use main J tensor for PCA sites
-                energies += np.sum(self.beta_PCA * self.J[trial_aa[:, None, None], PCA_coords[None, :, :], site, np.arange(self.L, self.L+self.nb_PCA_comp)[None, :]], axis=0)
+                #energies += np.sum(self.beta_PCA * self.J[trial_aa[:, None, None], PCA_coords[None, :, :], site, np.arange(self.L, self.L+self.nb_PCA_comp)[None, :]], axis=0)
+                contrib = []
+                for k in range(self.nb_PCA_comp):
+                    pca_idx = PCA_coords[:, k]  # (N,)
+                    # J slice: (21, 56, L, L+nb_PCA) → pick site and component L+k
+                    contrib_k = self.J[:, pca_idx, site, self.L + k]  # (21, N)
+                    contrib.append(self.beta_PCA * contrib_k.T)    # (N,21)
+                energies += sum(contrib) 
 
         # Softmax with numerical stability
         energies -= energies.max(axis=1, keepdims=True)
